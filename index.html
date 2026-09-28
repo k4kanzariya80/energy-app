@@ -93,17 +93,6 @@
     .btn-icon { width: 38px; height: 38px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); color: var(--text-main); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1rem; }
     .btn-icon:hover { background: var(--bg-card-hover); border-color: var(--primary); }
 
-    /* Factory Switcher Bar */
-    .factory-switcher-bar { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 10px 16px; box-shadow: var(--shadow-sm); }
-    .factory-bar-container { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-    .factory-select-wrapper { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
-    .factory-select { flex: 1; padding: 10px 14px; font-size: 0.95rem; font-weight: 700; border-radius: var(--radius-sm); border: 2px solid var(--primary); background: var(--bg-input); color: var(--text-main); cursor: pointer; }
-    .factory-info-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .info-chip { padding: 4px 12px; font-size: 0.75rem; font-weight: 700; border-radius: var(--radius-full); background: var(--primary-light); color: var(--primary-dark); display: inline-flex; align-items: center; gap: 4px; }
-    .info-chip.mf-chip { background: var(--warning-bg); color: var(--warning); }
-    .info-chip.reset-chip { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
-    .info-chip.solar-badge-chip { background: var(--solar-light); color: var(--solar-dark); border: 1px solid rgba(234, 179, 8, 0.4); }
-
     /* Meter Type Selector Bar */
     .meter-type-bar { background: var(--bg-card-hover); border-bottom: 1px solid var(--border); padding: 8px 16px; }
     .meter-type-container { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; box-sizing: border-box; }
@@ -375,7 +364,6 @@
       #btnHeaderGuide { padding: 4px 8px !important; }
       #btnHeaderGuide span:last-child { display: none; }
       #btnUserRole { padding: 4px 8px !important; gap: 4px !important; margin-left: 0 !important; }
-      .factory-switcher-bar { display: none !important; }
       .metrics-grid { grid-template-columns: 1fr 1fr; }
       .metric-value { font-size: 1.3rem; }
       .form-grid { grid-template-columns: 1fr; }
@@ -472,24 +460,6 @@
       </div>
     </div>
   </header>
-
-  <!-- Factory Active Bar (Hidden completely to maximize vertical space, DOM preserved for JS safety) -->
-  <section class="factory-switcher-bar" id="factorySwitcherSection" style="display:none !important;">
-    <div class="factory-bar-container" style="display:none;">
-      <!-- Hidden elements to preserve JavaScript element references -->
-      <span id="currentFactoryNameText" style="display:none;">-</span>
-      <span id="currentFactoryCodeBadge" style="display:none;">-</span>
-      <select id="factorySelect" class="factory-select" style="display:none;" aria-label="Select Factory"></select>
-
-      <div class="factory-info-chips" style="display:none;">
-        <span id="chipDiscom" class="info-chip">⚡ Discom: -</span>
-        <span id="chipMf" class="info-chip mf-chip">MF: ×1</span>
-        <span id="chipSolarTag" class="info-chip solar-badge-chip" style="display:none;">☀️ Solar Plant</span>
-        <span id="chipResetTag" class="info-chip reset-chip" style="display:none;">🔄 Meter Reset</span>
-        <span id="chipConsumer" class="info-chip">No: -</span>
-      </div>
-    </div>
-  </section>
 
   <!-- COMPACT SINGLE-ROW METER SELECTION BAR -->
   <section class="meter-type-bar" style="padding:6px 16px; background:transparent; border-bottom:none;">
@@ -4771,7 +4741,6 @@
                 App.openUserRoleModal(true, true);
               }
             } else if (window.App) {
-              App.populateFactorySelector();
               App.refreshSelectedFactoryView();
             }
           }
@@ -4970,7 +4939,6 @@
 
             // 5. Re-render UI with new cloud data
             if (window.App) {
-              window.App.populateFactorySelector();
               window.App.refreshSelectedFactoryView();
               window.App.updatePowerCutStatusView();
             }
@@ -6901,7 +6869,6 @@
               SyncEngine.pushToCloud();
               App.showToast('📥 Data imported and synced successfully!');
               setTimeout(() => {
-                App.populateFactorySelector();
                 App.refreshSelectedFactoryView();
               }, 500);
             }
@@ -7241,12 +7208,6 @@
           topPfBadge.className = 'top-pf-badge';
         }
 
-        // Reset Secondary / Info Bar
-        const curName = document.getElementById('currentFactoryNameText');
-        if (curName) curName.textContent = 'Please Log In';
-        const curCode = document.getElementById('currentFactoryCodeBadge');
-        if (curCode) curCode.textContent = '-';
-
         // Reset all dashboard metric cards
         const todayUnits = document.getElementById('cardTodayUnits');
         if (todayUnits) todayUnits.textContent = '-';
@@ -7366,7 +7327,6 @@
               return;
             }
           }
-          this.populateFactorySelector();
           this.refreshSelectedFactoryView();
           this.renderUndoImportBanner();
         }
@@ -7828,54 +7788,6 @@
         if (pinInput) pinInput.value = randomPin;
       },
 
-      populateFactorySelector() {
-        const selector = document.getElementById('factorySelect');
-        const currentFactoryNameText = document.getElementById('currentFactoryNameText');
-        const currentFactoryCodeBadge = document.getElementById('currentFactoryCodeBadge');
-        const allPlants = ContractorManager.getPlants();
-        const currentUser = AuthManager.getCurrentUser();
-        const activePlant = ContractorManager.getActivePlant();
-
-        // Populate Single Factory Bar
-        if (activePlant) {
-          if (currentFactoryNameText) currentFactoryNameText.textContent = activePlant.name;
-          if (currentFactoryCodeBadge) currentFactoryCodeBadge.textContent = activePlant.factoryCode || ('FAC-' + activePlant.id.slice(-4));
-        } else {
-          if (currentFactoryNameText) currentFactoryNameText.textContent = currentUser ? 'No Factory Assigned' : 'Please Log In';
-          if (currentFactoryCodeBadge) currentFactoryCodeBadge.textContent = '-';
-        }
-
-        // Keep hidden selector populated for script compatibility
-        if (selector) {
-          selector.innerHTML = '';
-          if (activePlant) {
-            const opt = document.createElement('option');
-            opt.value = activePlant.id;
-            opt.textContent = activePlant.name;
-            opt.selected = true;
-            selector.appendChild(opt);
-          }
-        }
-
-
-        // Populate Admin Login Factory Select dropdown
-        const adminLoginSelect = document.getElementById('loginAdminFactorySelect');
-        if (adminLoginSelect) {
-          const currentSelected = adminLoginSelect.value;
-          adminLoginSelect.innerHTML = '<option value="">-- Select Your Factory --</option>';
-          allPlants.forEach(plant => {
-            const opt = document.createElement('option');
-            opt.value = plant.id;
-            opt.textContent = `🏭 ${plant.name}${plant.discom ? ' (' + plant.discom + ')' : ''}`;
-            if (plant.id === currentSelected) opt.selected = true;
-            adminLoginSelect.appendChild(opt);
-          });
-          if (!adminLoginSelect.value && allPlants.length > 0) {
-            adminLoginSelect.value = (activePlant ? activePlant.id : allPlants[0].id);
-          }
-        }
-      },
-
       checkUserAccess() {
         const activePlant = ContractorManager.getActivePlant();
         const currentUser = AuthManager.getCurrentUser();
@@ -7959,7 +7871,6 @@
             topHeaderTitle.textContent = '⚡ Energy';
           }
         }
-        this.populateFactorySelector();
 
         // Update Top Header User Badge
         const topUserBadge = document.getElementById('topHeaderUserBadge');
@@ -8058,31 +7969,12 @@
           }
         }
 
-        // Header Chips
-        const discomChip = document.getElementById('chipDiscom');
-        const mfChip = document.getElementById('chipMf');
-        const resetChip = document.getElementById('chipResetTag');
-        const solarChip = document.getElementById('chipSolarTag');
-        const consumerChip = document.getElementById('chipConsumer');
-
         if (!activePlant) {
-          if (discomChip) discomChip.textContent = `⚡ Discom: -`;
-          if (mfChip) mfChip.textContent = `MF: ×1`;
-          if (solarChip) solarChip.style.display = 'none';
-          if (resetChip) resetChip.style.display = 'none';
-          if (consumerChip) consumerChip.textContent = `No: -`;
           HistoryManager.renderHistoryTable(null, this.currentMeterType);
           this.refreshDashboardMetrics(null);
           this.renderStaffList(null);
           return;
         }
-
-        const currentMf = getMeterMf(activePlant, this.currentMeterType === 'submeters' ? 'main' : this.currentMeterType);
-        if (discomChip) discomChip.textContent = `⚡ ${activePlant.discom}`;
-        if (mfChip) mfChip.textContent = isSubMeters ? `Sub-Meters (${activePlant.subMeters ? activePlant.subMeters.length : 0})` : `${meterName} MF: ×${currentMf}`;
-        if (solarChip) solarChip.style.display = activePlant.hasSolar ? 'inline-flex' : 'none';
-        if (resetChip) resetChip.style.display = activePlant.isMeterReset ? 'inline-flex' : 'none';
-        if (consumerChip) consumerChip.textContent = `No: ${activePlant.consumerNo || '-'}`;
 
         this.initDayPicker();
         this.updatePreviousHints(activePlant.id);
@@ -10051,7 +9943,6 @@
 
         this.closeAddPlantModal();
         this.showToast(`🏭 Factory "${name}" created!`);
-        this.populateFactorySelector();
         this.refreshSelectedFactoryView();
         document.getElementById('addPlantForm').reset();
       },
@@ -10800,7 +10691,6 @@
         });
         this.showToast('⚙️ Factory settings updated!');
         this.applyPlantSettingsLockState(false);
-        this.populateFactorySelector();
         this.refreshSelectedFactoryView();
       },
 
@@ -10913,7 +10803,6 @@
           } else {
             this.switchLoginModalTab('admin');
           }
-          this.populateFactorySelector();
         }
 
         ThemeManager.apply();
@@ -10938,7 +10827,6 @@
             this.showToast(`✅ Access verified! Welcome ${user.name}`);
             const deniedScreen = document.getElementById('accessDeniedScreen');
             if (deniedScreen) deniedScreen.classList.remove('active');
-            this.populateFactorySelector();
             this.refreshSelectedFactoryView();
             return;
           }
@@ -11674,7 +11562,6 @@
           this.showToast('🔑 ' + res.message);
           this.closeForgotPasswordModal();
           this.closeUserRoleModal();
-          this.populateFactorySelector();
           this.refreshSelectedFactoryView();
         } else {
           alert(res.message);
@@ -11719,7 +11606,6 @@
             adminBtn.style.background = 'var(--primary)';
             adminBtn.style.color = '#fff';
           }
-          this.populateFactorySelector();
         }
       },
 
@@ -12013,7 +11899,6 @@
           const deniedScreen = document.getElementById('accessDeniedScreen');
           if (deniedScreen) deniedScreen.classList.remove('active');
 
-          this.populateFactorySelector();
           this.refreshSelectedFactoryView();
           if (window.SyncEngine) SyncEngine.pullFromCloud();
         } else {
@@ -12073,7 +11958,6 @@
           const deniedScreen = document.getElementById('accessDeniedScreen');
           if (deniedScreen) deniedScreen.classList.remove('active');
 
-          this.populateFactorySelector();
           this.refreshSelectedFactoryView();
           if (window.SyncEngine) SyncEngine.pullFromCloud();
         } else {
@@ -12338,18 +12222,6 @@
       },
 
       registerEventListeners() {
-        const selector = document.getElementById('factorySelect');
-        if (selector) {
-          selector.addEventListener('change', (e) => {
-            if (e.target.value) {
-              ContractorManager.setActivePlantId(e.target.value);
-              this.refreshSelectedFactoryView();
-            } else {
-              this.openAddPlantModal();
-            }
-          });
-        }
-
         document.querySelectorAll('.tab-btn').forEach(btn => {
           btn.addEventListener('click', () => this.switchTab(btn.getAttribute('data-tab')));
         });
