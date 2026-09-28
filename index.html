@@ -5836,18 +5836,21 @@
             const deleteButton = !isViewer
               ? `<button class="btn-table-action delete" onclick="App.confirmDeletePowerCut('${c.id}')" title="Delete Outage Record">🗑️</button>`
               : '';
-            const durationCell = `<td${isMultiDay ? ' rowspan="2"' : ''}><strong>${durationText}</strong></td>`;
-            const auditCell = `<td${isMultiDay ? ' rowspan="2"' : ''}><span class="audit-name">${formatAuditName(c.recordedBy || 'Staff')}</span></td>`;
-            const actionCell = `<td${isMultiDay ? ' rowspan="2"' : ''}>${deleteButton}</td>`;
+            const durationCell = `<td><strong>${durationText}</strong></td>`;
+            const auditCell = `<td><span class="audit-name">${formatAuditName(c.recordedBy || 'Staff')}</span></td>`;
+            const actionCell = !isViewer ? `<td>${deleteButton}</td>` : '';
             const startDisplayDate = formatDisplayDate(startDate);
             const startSmartDate = formatSmartHistoryDate(startDate);
 
             if (isMultiDay) {
               const endDisplayDate = formatDisplayDate(endDate);
-              const endSmartDate = formatSmartHistoryDate(endDate);
+              const compactDate = date => {
+                const parts = date.split('-');
+                return parts.length === 3 ? `${parts[2]}/${parts[1]}` : date;
+              };
               const outageRow = document.createElement('tr');
               outageRow.innerHTML = `
-                <td class="col-date" title="${startDisplayDate}" style="cursor:help;"><strong>${startSmartDate}</strong></td>
+                <td class="col-date" title="${startDisplayDate}" style="cursor:help;"><strong>${compactDate(startDate)}</strong></td>
                 <td><span style="color:var(--danger); font-weight:700;">🔴 ${c.startTime}</span></td>
                 <td>-</td>
                 ${durationCell}
@@ -5857,10 +5860,13 @@
               `;
               const restoreRow = document.createElement('tr');
               restoreRow.innerHTML = `
-                <td class="col-date" title="${endDisplayDate}" style="cursor:help;"><strong>${endSmartDate}</strong></td>
+                <td class="col-date" title="${endDisplayDate}" style="cursor:help;"><strong>${compactDate(endDate)}</strong></td>
                 <td>-</td>
                 <td><span style="color:var(--success); font-weight:700;">🟢 ${c.endTime || '-'}</span></td>
+                <td></td>
                 <td><span class="role-tag good" style="background:#dcfce7; color:#16a34a;">🟢 Power Restored</span></td>
+                <td></td>
+                ${!isViewer ? '<td></td>' : ''}
               `;
               tbody.appendChild(outageRow);
               tbody.appendChild(restoreRow);
