@@ -32,7 +32,7 @@ jobs:
       - name: Upload app
         uses: actions/upload-pages-artifact@v3
         with:
-          path: index.html
+          path: .
       - name: Deploy app
         id: deployment
         uses: actions/deploy-pages@v4
