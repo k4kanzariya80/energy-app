@@ -2609,11 +2609,15 @@
         <div class="form-grid">
           <div class="form-group" style="grid-column:1/-1;">
             <label for="outageDate">Outage Date</label>
-            <input type="date" id="outageDate" class="form-control" required>
+            <input type="date" id="outageDate" class="form-control" required onchange="App.updateManualOutageRestoreDateMin()">
           </div>
           <div class="form-group">
             <label for="outageStartTime">Power Cut Time (Down)</label>
             <input type="time" id="outageStartTime" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label for="outageEndDate">Power Restore Date</label>
+            <input type="date" id="outageEndDate" class="form-control" required>
           </div>
           <div class="form-group">
             <label for="outageEndTime">Power Restored Time (Up)</label>
@@ -4531,32 +4535,42 @@
           return plantCuts;
         }
 
+        const getCutStartDate = c => c.startTimestamp ? getDeviceLocalDateString(new Date(c.startTimestamp)) : (c.date || '');
+        const getCutEndDate = c => {
+          if (c.endTimestamp) return getDeviceLocalDateString(new Date(c.endTimestamp));
+          if ((c.durationMins || 0) >= 1440) {
+            const startTimestamp = c.startTimestamp || new Date(`${c.date}T00:00:00`).getTime();
+            return getDeviceLocalDateString(new Date(startTimestamp + c.durationMins * 60000));
+          }
+          return c.date || '';
+        };
+
         // If specific date string (YYYY-MM-DD)
         if (rangeOrDate.length === 10 && rangeOrDate.includes('-')) {
-          return plantCuts.filter(c => c.date === rangeOrDate);
+          return plantCuts.filter(c => getCutStartDate(c) === rangeOrDate || getCutEndDate(c) === rangeOrDate);
         }
 
         const now = new Date();
         const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
         if (rangeOrDate === 'this_month') {
-          return plantCuts.filter(c => c.isActive || (c.date && c.date.startsWith(curYm)));
+          return plantCuts.filter(c => c.isActive || getCutStartDate(c).startsWith(curYm) || getCutEndDate(c).startsWith(curYm));
         }
 
         if (rangeOrDate === 'last_month') {
           const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
           const prevYm = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-          return plantCuts.filter(c => c.date && c.date.startsWith(prevYm));
+          return plantCuts.filter(c => getCutStartDate(c).startsWith(prevYm) || getCutEndDate(c).startsWith(prevYm));
         }
 
         if (rangeOrDate === '3m') {
           const cutoff = getDeviceLocalDateString(new Date(now.getFullYear(), now.getMonth() - 2, 1));
-          return plantCuts.filter(c => c.isActive || (c.date && c.date >= cutoff));
+          return plantCuts.filter(c => c.isActive || getCutStartDate(c) >= cutoff || getCutEndDate(c) >= cutoff);
         }
 
         if (rangeOrDate === '6m') {
           const cutoff = getDeviceLocalDateString(new Date(now.getFullYear(), now.getMonth() - 5, 1));
-          return plantCuts.filter(c => c.isActive || (c.date && c.date >= cutoff));
+          return plantCuts.filter(c => c.isActive || getCutStartDate(c) >= cutoff || getCutEndDate(c) >= cutoff);
         }
 
         return plantCuts;
@@ -4614,34 +4628,26 @@
         return all[activeIndex];
       },
 
-      addManualCut(plantId, dateStr, startTimeStr, endTimeStr, user = 'Staff') {
+      addManualCut(plantId, startDateStr, startTimeStr, endDateStr, endTimeStr, user = 'Staff') {
         const all = this.getAllPowerCuts();
 
-        const parseTimeToDate = (dStr, tStr) => {
-          if (!tStr) return null;
-          let parts = tStr.trim().split(/\s+/);
-          let time = parts[0];
-          let mod = parts[1];
-          let [h, m] = time.split(':').map(Number);
-          if (mod) {
-            mod = mod.toUpperCase();
-            if (mod === 'PM' && h < 12) h += 12;
-            if (mod === 'AM' && h === 12) h = 0;
-          }
-          const [yr, mo, dy] = dStr.split('-').map(Number);
-          return new Date(yr, mo - 1, dy, h || 0, m || 0, 0);
+        const parseLocalDateTime = (dateStr, timeStr) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '') || !/^\d{2}:\d{2}$/.test(timeStr || '')) return null;
+          const [year, month, day] = dateStr.split('-').map(Number);
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0);
+          if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day ||
+              parsed.getHours() !== hours || parsed.getMinutes() !== minutes) return null;
+          return parsed;
         };
 
-        const startDate = parseTimeToDate(dateStr, startTimeStr);
-        let endDate = parseTimeToDate(dateStr, endTimeStr);
+        const startDate = parseLocalDateTime(startDateStr, startTimeStr);
+        const endDate = parseLocalDateTime(endDateStr, endTimeStr);
+        if (!startDate || !endDate || endDate <= startDate) return null;
 
-        if (startDate && endDate && endDate < startDate) {
-          endDate = new Date(endDate.getTime() + 86400000);
-        }
-
-        const startTs = startDate ? startDate.getTime() : Date.now();
-        const endTs = endDate ? endDate.getTime() : startTs;
-        const diffMins = Math.max(1, Math.round((endTs - startTs) / 60000));
+        const startTs = startDate.getTime();
+        const endTs = endDate.getTime();
+        const diffMins = Math.round((endTs - startTs) / 60000);
 
         const formatAmPm = (d) => {
           if (!d) return '';
@@ -4651,10 +4657,10 @@
         const newCut = {
           id: 'cut_' + Date.now(),
           plantId: plantId,
-          date: dateStr,
-          startTime: formatAmPm(startDate) || startTimeStr,
+          date: startDateStr,
+          startTime: formatAmPm(startDate),
           startTimestamp: startTs,
-          endTime: formatAmPm(endDate) || endTimeStr,
+          endTime: formatAmPm(endDate),
           endTimestamp: endTs,
           durationMins: diffMins,
           isActive: false,
@@ -5815,18 +5821,61 @@
           if (emptyState) emptyState.style.display = 'none';
 
           cuts.forEach(c => {
+            const startTimestamp = c.startTimestamp || new Date(`${c.date}T00:00:00`).getTime();
+            const startDate = c.startTimestamp ? getDeviceLocalDateString(new Date(c.startTimestamp)) : c.date;
+            const endTimestamp = c.endTimestamp || (startTimestamp + (c.durationMins || 0) * 60000);
+            const endDate = (c.endTimestamp || c.durationMins >= 1440)
+              ? getDeviceLocalDateString(new Date(endTimestamp))
+              : c.date;
+            const isMultiDay = !c.isActive && startDate !== endDate;
+            const durationText = c.isActive
+              ? `<span style="color:var(--danger); font-weight:700;">Active Outage...</span>`
+              : c.durationMins >= 1440
+                ? `${Math.floor(c.durationMins / 1440)}d ${Math.floor((c.durationMins % 1440) / 60)}h ${c.durationMins % 60}m`
+                : `${c.durationMins} min`;
+            const deleteButton = !isViewer
+              ? `<button class="btn-table-action delete" onclick="App.confirmDeletePowerCut('${c.id}')" title="Delete Outage Record">🗑️</button>`
+              : '';
+            const durationCell = `<td${isMultiDay ? ' rowspan="2"' : ''}><strong>${durationText}</strong></td>`;
+            const auditCell = `<td${isMultiDay ? ' rowspan="2"' : ''}><span class="audit-name">${formatAuditName(c.recordedBy || 'Staff')}</span></td>`;
+            const actionCell = `<td${isMultiDay ? ' rowspan="2"' : ''}>${deleteButton}</td>`;
+            const startDisplayDate = formatDisplayDate(startDate);
+            const startSmartDate = formatSmartHistoryDate(startDate);
+
+            if (isMultiDay) {
+              const endDisplayDate = formatDisplayDate(endDate);
+              const endSmartDate = formatSmartHistoryDate(endDate);
+              const outageRow = document.createElement('tr');
+              outageRow.innerHTML = `
+                <td class="col-date" title="${startDisplayDate}" style="cursor:help;"><strong>${startSmartDate}</strong></td>
+                <td><span style="color:var(--danger); font-weight:700;">🔴 ${c.startTime}</span></td>
+                <td>-</td>
+                ${durationCell}
+                <td><span class="role-tag unauthorized" style="background:#fee2e2; color:#dc2626;">🔴 Power Cut</span></td>
+                ${auditCell}
+                ${actionCell}
+              `;
+              const restoreRow = document.createElement('tr');
+              restoreRow.innerHTML = `
+                <td class="col-date" title="${endDisplayDate}" style="cursor:help;"><strong>${endSmartDate}</strong></td>
+                <td>-</td>
+                <td><span style="color:var(--success); font-weight:700;">🟢 ${c.endTime || '-'}</span></td>
+                <td><span class="role-tag good" style="background:#dcfce7; color:#16a34a;">🟢 Power Restored</span></td>
+              `;
+              tbody.appendChild(outageRow);
+              tbody.appendChild(restoreRow);
+              return;
+            }
+
             const tr = document.createElement('tr');
-            const formattedDate = formatDisplayDate(c.date);
-            const smartDate = formatSmartHistoryDate(c.date);
-            const durationText = c.isActive ? `<span style="color:var(--danger); font-weight:700;">Active Outage...</span>` : `${c.durationMins} min`;
             tr.innerHTML = `
-              <td class="col-date" title="${formattedDate}" style="cursor:help;"><strong>${smartDate}</strong></td>
+              <td class="col-date" title="${startDisplayDate}" style="cursor:help;"><strong>${startSmartDate}</strong></td>
               <td><span style="color:var(--danger); font-weight:700;">🔴 ${c.startTime}</span></td>
               <td>${c.endTime ? `<span style="color:var(--success); font-weight:700;">🟢 ${c.endTime}</span>` : '-'}</td>
-              <td><strong>${durationText}</strong></td>
+              ${durationCell}
               <td><span class="role-tag ${c.isActive ? 'unauthorized' : 'good'}" style="${c.isActive ? 'background:#fee2e2; color:#dc2626;' : 'background:#dcfce7; color:#16a34a;'}">${c.isActive ? '🔴 Outage' : '🟢 Normal'}</span></td>
-              <td><span class="audit-name">${formatAuditName(c.recordedBy || 'Staff')}</span></td>
-              ${!isViewer ? `<td><button class="btn-table-action delete" onclick="App.confirmDeletePowerCut('${c.id}')" title="Delete Outage Record">🗑️</button></td>` : ''}
+              ${auditCell}
+              ${actionCell}
             `;
             tbody.appendChild(tr);
           });
@@ -6991,6 +7040,7 @@
         let mainPf = null;
 
         let solarKwh = null;
+        const unassignedReadings = [];
         const subReadingsMap = new Map(); // key -> { subId, name, matchedName, kwh }
 
         const isSolarIndicator = (str) => /(?:^|[^\w])(?:solar|soler|rooftop|pv)(?:[^\w]|$)/i.test(str);
@@ -7101,6 +7151,30 @@
             }
           }
 
+          const unknownLabelMatch = line.match(/^\s*([a-z][a-z0-9 _-]{1,30})\s*[:=|]\s*[\d,]{4,}(?:\.\d+)?/i);
+          const hasUnknownLabel = unknownLabelMatch && !/^(?:kwh|reading|active|units?)\b/i.test(unknownLabelMatch[1].trim());
+          const currentSubKey = currentSubContext && (currentSubContext.subId || currentSubContext.name.toLowerCase());
+          const sectionHasReading = currentSection === 'main' ? mainKwh !== null
+            : currentSection === 'solar' ? solarKwh !== null
+              : currentSection === 'sub' && currentSubKey ? subReadingsMap.has(currentSubKey)
+                : false;
+          if ((!currentSection || hasUnknownLabel || sectionHasReading) && !isMainIndicator(line) && !isSolarIndicator(line)) {
+            const unidentifiedNumber = line.match(/(?:^|[^\d])([\d,]{4,}(?:\.\d+)?)(?=$|[^\d])/);
+            const isMetadata = /\b(?:phone|mobile|consumer|customer|account|bill|factory|code|contact|date|time|kva|kvah|kvarh|md|demand|pf)\b/i.test(line);
+            if (unidentifiedNumber && !isMetadata) {
+              const kwh = parseFloat(unidentifiedNumber[1].replace(/,/g, ''));
+              if (!isNaN(kwh) && kwh >= 1000) {
+                const label = line.replace(unidentifiedNumber[1], '').replace(/\b(?:kwh|units?|reading|meter)\b/gi, '').replace(/[:=|_\-]/g, ' ').trim();
+                unassignedReadings.push({
+                  name: label || 'Unidentified reading',
+                  kwh,
+                  meterType: ''
+                });
+                continue;
+              }
+            }
+          }
+
           // 6. Otherwise: parse Main Meter readings (kWh, kVAh, kVArh, MD, PF)
           const lineKvah = extractNumber(line, /(?:kvah|kva)[_\s:=]+([0-9]+(?:\.[0-9]+)?)(?!\s*\(?consumption)/i);
           if (lineKvah !== null) { mainKvah = lineKvah; currentSection = 'main'; }
@@ -7179,7 +7253,8 @@
             pf: (mainPf || 1.0)
           } : null,
           solar: (solarKwh !== null) ? { kwh: solarKwh } : null,
-          subMeters: subReadings
+          subMeters: subReadings,
+          unassignedReadings
         };
       },
 
@@ -8844,84 +8919,20 @@
         }
 
         this.parsedWhatsAppObj = parsed;
-        const dateStr = parsed.date;
-
-        // Render live preview
-        const prevCont = document.getElementById('whatsAppPreviewContainer');
-        const prevBody = document.getElementById('whatsAppPreviewBody');
-        const saveBtn = document.getElementById('btnSaveWhatsAppImport');
-        const banner = document.getElementById('aiExtractionBanner');
-        const countSpan = document.getElementById('aiExtractionCount');
         const dateInput = document.getElementById('whatsAppSelectedDate');
+        if (dateInput) dateInput.value = parsed.date;
+        this.updateWhatsAppPreviewUi();
+      },
 
-        let rowsHtml = '';
-        let totalDetected = 0;
-
-        if (this.parsedWhatsAppObj.main) {
-          totalDetected++;
-          rowsHtml += `
-            <tr style="background:rgba(37,99,235,0.06);">
-              <td style="min-width:160px; text-align:left; font-weight:700;">⚡ Main Meter</td>
-              <td><strong>${this.parsedWhatsAppObj.main.kwh.toLocaleString()}</strong></td>
-              <td>${this.parsedWhatsAppObj.main.kvah ? this.parsedWhatsAppObj.main.kvah.toLocaleString() : '-'}</td>
-              <td>${this.parsedWhatsAppObj.main.kvarh ? this.parsedWhatsAppObj.main.kvarh.toLocaleString() : '-'}</td>
-              <td>${this.parsedWhatsAppObj.main.md ? this.parsedWhatsAppObj.main.md + ' kW' : '-'}</td>
-              <td><span class="role-tag admin" style="font-size:0.72rem; padding:2px 6px;">⚡ Ready</span></td>
-            </tr>
-          `;
-        }
-
-        if (this.parsedWhatsAppObj.solar) {
-          totalDetected++;
-          rowsHtml += `
-            <tr style="background:rgba(234,179,8,0.06);">
-              <td style="min-width:160px; text-align:left; font-weight:700; color:#b45309;">☀️ Solar Meter</td>
-              <td><strong>${this.parsedWhatsAppObj.solar.kwh.toLocaleString()}</strong></td>
-              <td>-</td>
-              <td>-</td>
-              <td>-</td>
-              <td><span class="role-tag" style="background:#fef3c7; color:#b45309; font-size:0.72rem; padding:2px 6px;">☀️ Ready</span></td>
-            </tr>
-          `;
-        }
-
-        if (this.parsedWhatsAppObj.subMeters && this.parsedWhatsAppObj.subMeters.length > 0) {
-          this.parsedWhatsAppObj.subMeters.forEach(s => {
-            totalDetected++;
-            rowsHtml += `
-              <tr>
-                <td style="min-width:160px; text-align:left; font-weight:700;">🔌 ${s.matchedName || s.name} ${s.subId ? '' : '<span style="font-size:0.7rem; color:var(--warning);">(New)</span>'}</td>
-                <td><strong>${s.kwh.toLocaleString()}</strong></td>
-                <td>-</td>
-                <td>-</td>
-                <td>-</td>
-                <td><span class="role-tag operator" style="font-size:0.72rem; padding:2px 6px;">🔌 Ready</span></td>
-              </tr>
-            `;
-          });
-        }
-
-        if (totalDetected > 0) {
-          if (dateInput) dateInput.value = dateStr;
-          if (countSpan) countSpan.textContent = `Extracted ${totalDetected} Reading${totalDetected > 1 ? 's' : ''}`;
-          if (banner) banner.style.display = 'block';
-
-          if (prevBody) prevBody.innerHTML = rowsHtml;
-          if (prevCont) prevCont.style.display = 'block';
-          if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
-            saveBtn.textContent = `⚡ Save ${totalDetected} Reading${totalDetected > 1 ? 's' : ''} to ${activePlant.name}`;
-          }
-        } else {
-          if (banner) banner.style.display = 'none';
-          if (prevCont) prevCont.style.display = 'none';
-          if (saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.style.background = '#9ca3af';
-            saveBtn.textContent = 'No readings detected in text';
-          }
-        }
+      assignWhatsAppReadingMeter(index, meterType) {
+        const readings = this.parsedWhatsAppObj && this.parsedWhatsAppObj.unassignedReadings;
+        if (!readings || !readings[index]) return;
+        const plant = ContractorManager.getActivePlant();
+        const isValidMeter = meterType === 'main' || meterType === 'solar' ||
+          (plant && (plant.subMeters || []).some(sub => sub.id === meterType));
+        if (!isValidMeter) return;
+        readings[index].meterType = meterType;
+        this.updateWhatsAppPreviewUi();
       },
 
       onWhatsAppDateChanged() {
@@ -8957,6 +8968,53 @@
           return;
         }
 
+        let mainData = this.parsedWhatsAppObj.main ? { ...this.parsedWhatsAppObj.main } : null;
+        let solarData = this.parsedWhatsAppObj.solar ? { ...this.parsedWhatsAppObj.solar } : null;
+        const subMeterItems = [...(this.parsedWhatsAppObj.subMeters || [])];
+        const unassignedReadings = this.parsedWhatsAppObj.unassignedReadings || [];
+        if (unassignedReadings.some(reading => !reading.meterType)) {
+          alert('Please select a meter for each unidentified reading before importing.');
+          return;
+        }
+        let invalidMeterAssignment = false;
+        unassignedReadings.forEach(reading => {
+          if (reading.meterType === 'main') {
+            if (mainData) {
+              invalidMeterAssignment = true;
+              return;
+            }
+            mainData = { kwh: reading.kwh, kvah: reading.kwh, kvarh: 0, md: 0, pf: 1.0 };
+          } else if (reading.meterType === 'solar') {
+            if (solarData) {
+              invalidMeterAssignment = true;
+              return;
+            }
+            solarData = { kwh: reading.kwh };
+          } else if ((activePlant.subMeters || []).some(sub => sub.id === reading.meterType)) {
+            const targetSubMeter = activePlant.subMeters.find(sub => sub.id === reading.meterType);
+            subMeterItems.push({
+              subId: reading.meterType,
+              name: targetSubMeter.name,
+              kwh: reading.kwh
+            });
+          } else {
+            invalidMeterAssignment = true;
+          }
+        });
+        if (invalidMeterAssignment) {
+          alert('A selected meter is unavailable or already has a detected reading. Please review the meter selections.');
+          return;
+        }
+        const assignmentKeys = [
+          ...(mainData ? ['main'] : []),
+          ...(solarData ? ['solar'] : []),
+          ...subMeterItems.map(item => item.subId || `new:${item.name.toLowerCase()}`)
+        ];
+        if (assignmentKeys.some((meterType, index) => assignmentKeys.indexOf(meterType) !== index)) {
+          alert('Each imported reading must be assigned to a different meter. Please correct the meter selections.');
+          return;
+        }
+
         // 2. Duplicate Check
         let allReadings = HistoryManager.getAllReadings();
         const preImportSnapshot = JSON.parse(JSON.stringify(allReadings));
@@ -8978,8 +9036,7 @@
         const nowDeviceTime = getDeviceLocalDateTime();
 
         // Save Main Meter
-        if (this.parsedWhatsAppObj.main) {
-          const mainData = this.parsedWhatsAppObj.main;
+        if (mainData) {
           const plantMf = getMeterMf(activePlant, 'main');
           const calcMd = mainData.md ? parseFloat((mainData.md * plantMf).toFixed(2)) : 0;
           const existingIdx = allReadings.findIndex(r => r.plantId === activePlant.id && (r.meterType || 'main') === 'main' && r.date === dateStr);
@@ -9018,8 +9075,8 @@
         }
 
         // Save Sub-Meters
-        if (this.parsedWhatsAppObj.subMeters && this.parsedWhatsAppObj.subMeters.length > 0) {
-          this.parsedWhatsAppObj.subMeters.forEach(subItem => {
+        if (subMeterItems.length > 0) {
+          subMeterItems.forEach(subItem => {
             let targetSubId = subItem.subId;
             if (!targetSubId) {
               const newSub = ContractorManager.addSubMeter(activePlant.id, { name: subItem.name, mf: 1 });
@@ -9062,8 +9119,7 @@
         }
 
         // Save Solar Meter
-        if (this.parsedWhatsAppObj.solar) {
-          const solarData = this.parsedWhatsAppObj.solar;
+        if (solarData) {
           if (!activePlant.hasSolar) {
             activePlant.hasSolar = true;
             ContractorManager.savePlants(ContractorManager.getPlants());
@@ -10035,10 +10091,25 @@
         const d = now.getDate() < 10 ? '0' + now.getDate() : now.getDate();
         
         if (dateInput) dateInput.value = `${y}-${m}-${d}`;
+        const endDateInput = document.getElementById('outageEndDate');
+        if (endDateInput) {
+          endDateInput.value = `${y}-${m}-${d}`;
+          endDateInput.min = `${y}-${m}-${d}`;
+        }
         if (startInput) startInput.value = '10:00';
         if (endInput) endInput.value = '11:00';
         
         if (modal) modal.classList.add('active');
+      },
+
+      updateManualOutageRestoreDateMin() {
+        const startDateInput = document.getElementById('outageDate');
+        const endDateInput = document.getElementById('outageEndDate');
+        if (!startDateInput || !endDateInput) return;
+        endDateInput.min = startDateInput.value;
+        if (endDateInput.value && endDateInput.value < startDateInput.value) {
+          endDateInput.value = startDateInput.value;
+        }
       },
 
       closeAddManualOutageModal() {
@@ -10052,17 +10123,24 @@
         if (!activePlant) return alert('Please select a factory first.');
 
         const dateStr = document.getElementById('outageDate').value;
+        const endDateStr = document.getElementById('outageEndDate').value;
         const startTime = document.getElementById('outageStartTime').value;
         const endTime = document.getElementById('outageEndTime').value;
 
-        if (!dateStr || !startTime || !endTime) {
-          return alert('Please enter Date, Power Cut Time, and Power Restored Time.');
+        if (!dateStr || !endDateStr || !startTime || !endTime) {
+          return alert('Please enter the power cut date/time and the power restoration date/time.');
+        }
+        if (endDateStr < dateStr || (endDateStr === dateStr && endTime <= startTime)) {
+          return alert('Power restoration date and time must be after the power cut date and time.');
         }
 
         const currentUser = AuthManager.getCurrentUser();
         const userName = currentUser ? currentUser.name : 'Staff';
 
-        PowerCutManager.addManualCut(activePlant.id, dateStr, startTime, endTime, userName);
+        const savedCut = PowerCutManager.addManualCut(activePlant.id, dateStr, startTime, endDateStr, endTime, userName);
+        if (!savedCut) {
+          return alert('The outage date/time is invalid, or restoration must be after the power cut.');
+        }
         this.showToast('⚡ Power outage record added successfully!');
         this.closeAddManualOutageModal();
         HistoryManager.renderHistoryTable(activePlant.id, this.currentMeterType);
@@ -10925,6 +11003,56 @@
           });
         }
 
+        const unassignedReadings = parsed.unassignedReadings || [];
+        const meterOptions = [
+          { value: 'main', label: '⚡ Main Meter' },
+          { value: 'solar', label: '☀️ Solar Meter' },
+          ...(activePlant.subMeters || []).map(sub => ({ value: sub.id, label: `🔌 ${sub.name}` }))
+        ];
+        const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+        unassignedReadings.forEach((reading, index) => {
+          totalCount++;
+          const options = meterOptions.map(option =>
+            `<option value="${escapeHtml(option.value)}" ${reading.meterType === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`
+          ).join('');
+          rowsHtml += `
+            <tr style="background:rgba(217,119,6,0.08);">
+              <td><strong>❔ ${escapeHtml(reading.name)}</strong></td>
+              <td><strong>${reading.kwh.toLocaleString()}</strong></td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>
+                <select class="form-control" aria-label="Select meter for ${escapeHtml(reading.name)}" onchange="App.assignWhatsAppReadingMeter(${index}, this.value)">
+                  <option value="">Select meter</option>
+                  ${options}
+                </select>
+              </td>
+            </tr>
+          `;
+        });
+        if (totalCount === 0) {
+          if (banner) banner.style.display = 'none';
+          if (prevCont) prevCont.style.display = 'none';
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.style.background = '#9ca3af';
+            saveBtn.textContent = 'No readings detected in text';
+          }
+          return;
+        }
+
+        const missingMeterSelection = unassignedReadings.some(reading => !reading.meterType);
+        const assignedMeters = [
+          ...(parsed.main ? ['main'] : []),
+          ...(parsed.solar ? ['solar'] : []),
+          ...(parsed.subMeters || []).map(reading => reading.subId || `new:${reading.name.toLowerCase()}`),
+          ...unassignedReadings.map(reading => reading.meterType).filter(Boolean)
+        ];
+        const duplicateMeterSelection = assignedMeters.some((meterType, index) => assignedMeters.indexOf(meterType) !== index);
+
         if (prevBody) prevBody.innerHTML = rowsHtml;
         if (prevCont) prevCont.style.display = 'block';
         if (banner) banner.style.display = 'block';
@@ -10934,6 +11062,10 @@
             countEl.innerHTML = `<span style="color:#dc2626;">🔒 Active write access to this factory is required.</span>`;
           } else if (!isWithin5Days && !isAdmin) {
             countEl.innerHTML = `<span style="color:#dc2626;">⚠️ 5-Day Rule: Editors can only record today or the previous 4 days (${formatDisplayDate(dateStr)})</span>`;
+          } else if (missingMeterSelection) {
+            countEl.innerHTML = `<span style="color:#d97706;">❔ Select a meter for each unidentified reading before importing.</span>`;
+          } else if (duplicateMeterSelection) {
+            countEl.innerHTML = `<span style="color:#dc2626;">⚠️ More than one reading is assigned to the same meter. Choose a different meter for each reading.</span>`;
           } else if (hasDuplicate && !isAdmin) {
             countEl.innerHTML = `<span style="color:#dc2626;">⚠️ Duplicate Protected: Readings on ${formatDisplayDate(dateStr)} already exist</span>`;
           } else if (hasDuplicate && isAdmin) {
@@ -10952,6 +11084,14 @@
             saveBtn.disabled = true;
             saveBtn.style.background = '#9ca3af';
             saveBtn.innerHTML = `❌ Blocked: Outside 5-day entry window (${formatDisplayDate(dateStr)})`;
+          } else if (missingMeterSelection) {
+            saveBtn.disabled = true;
+            saveBtn.style.background = '#9ca3af';
+            saveBtn.innerHTML = '❔ Select a meter for each unidentified reading';
+          } else if (duplicateMeterSelection) {
+            saveBtn.disabled = true;
+            saveBtn.style.background = '#9ca3af';
+            saveBtn.innerHTML = '⚠️ Each reading must use a different meter';
           } else if (hasDuplicate && !isAdmin) {
             saveBtn.disabled = true;
             saveBtn.style.background = '#9ca3af';
