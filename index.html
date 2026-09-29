@@ -7620,13 +7620,6 @@
 
         if (daySelect.value === 'custom') {
           dateInput.style.display = 'block';
-          if (!dateInput.value) {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = (now.getMonth() + 1) < 10 ? '0' + (now.getMonth() + 1) : (now.getMonth() + 1);
-            const d = now.getDate() < 10 ? '0' + now.getDate() : now.getDate();
-            dateInput.value = `${y}-${m}-${d}`;
-          }
         } else {
           dateInput.style.display = 'none';
           const now = new Date();
@@ -7678,6 +7671,9 @@
         if (daySelect && dateInput) {
           if (daySelect.value === 'custom') {
             dateInput.style.display = 'block';
+            if (!dateInput.value) {
+              dateInput.value = getDeviceLocalDateString();
+            }
             dateInput.focus();
           } else {
             dateInput.style.display = 'none';
@@ -7687,6 +7683,8 @@
       },
 
       handleCustomDateChange() {
+        const dateInput = document.getElementById('inputDate');
+        if (!dateInput || !dateInput.value) return;
         this.updateDateFromDaySelect();
       },
 
