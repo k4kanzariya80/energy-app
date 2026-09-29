@@ -2646,7 +2646,7 @@
       <div class="form-grid">
         <div class="form-group" style="grid-column:1/-1;">
           <label for="importMeterSelect">Select Target Meter</label>
-          <select id="importMeterSelect" class="form-control" style="font-weight:700;">
+          <select id="importMeterSelect" class="form-control" style="font-weight:700;" onchange="App.onImportMeterChanged()">
             <option value="main">Main Meter</option>
             <option value="solar">Solar Meter</option>
           </select>
@@ -8846,6 +8846,9 @@
 
       // Export CSV Modal Methods
       parsedImportRows: [],
+      importWorkbook: null,
+      importRawRows: null,
+      importSourceSheetName: '',
 
       parsedWhatsAppObj: null,
 
@@ -9166,17 +9169,18 @@
         localStorage.setItem(HistoryManager.STORAGE_READINGS_KEY, JSON.stringify(allReadings));
         HistoryManager.recalculatePlantReadings(activePlant.id, null, true);
 
-        // Save Batch Undo Payload (1 min per imported entry, minimum 5 mins)
+        // Keep every import undo window fixed at five minutes.
         if (savedCount > 0) {
+          const undoTimestamp = Date.now();
           const undoPayload = {
             batchId: 'batch_' + Date.now(),
             plantId: activePlant.id,
             plantName: activePlant.name,
             meterType: 'main',
             entryCount: savedCount,
-            timestamp: Date.now(),
-            durationMinutes: Math.max(5, savedCount),
-            expiresAt: Date.now() + (Math.max(5, savedCount) * 60 * 1000),
+            timestamp: undoTimestamp,
+            durationMinutes: 5,
+            expiresAt: undoTimestamp + (5 * 60 * 1000),
             previousAllReadingsSnapshot: preImportSnapshot
           };
           localStorage.setItem('kalpesh_last_import_undo', JSON.stringify(undoPayload));
@@ -9347,6 +9351,9 @@
 
         if (fileInput) fileInput.value = '';
         if (previewCont) previewCont.style.display = 'none';
+        this.importWorkbook = null;
+        this.importRawRows = null;
+        this.importSourceSheetName = '';
         if (execBtn) {
           execBtn.disabled = true;
           execBtn.textContent = 'Import Readings';
@@ -9381,6 +9388,14 @@
         const file = e.target.files && e.target.files[0];
         if (!file) return;
 
+        this.importWorkbook = null;
+        this.importRawRows = null;
+        this.importSourceSheetName = '';
+        this.parsedImportRows = [];
+        const previewCont = document.getElementById('importPreviewContainer');
+        const execBtn = document.getElementById('btnExecuteImport');
+        if (previewCont) previewCont.style.display = 'none';
+        if (execBtn) execBtn.disabled = true;
         const reader = new FileReader();
 
         reader.onload = (evt) => {
@@ -9388,13 +9403,12 @@
             if (typeof XLSX !== 'undefined') {
               const data = new Uint8Array(evt.target.result);
               const workbook = XLSX.read(data, { type: 'array', cellDates: false });
-              const firstSheetName = workbook.SheetNames[0];
-              const worksheet = workbook.Sheets[firstSheetName];
-              const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-              this.processParsedExcelRows(rawRows);
+              this.importWorkbook = workbook;
+              this.processSelectedImportSheet();
             } else {
               const text = new TextDecoder('utf-8').decode(evt.target.result);
               const lines = text.trim().split(/\r?\n/).map(l => l.split(','));
+              this.importRawRows = lines;
               this.processParsedExcelRows(lines);
             }
           } catch (err) {
@@ -9406,9 +9420,92 @@
         reader.readAsArrayBuffer(file);
       },
 
+      onImportMeterChanged() {
+        if (this.importWorkbook) {
+          this.processSelectedImportSheet();
+        } else if (this.importRawRows) {
+          this.importSourceSheetName = '';
+          this.processParsedExcelRows(this.importRawRows);
+        }
+      },
+
+      processSelectedImportSheet() {
+        const workbook = this.importWorkbook;
+        const meterSel = document.getElementById('importMeterSelect');
+        const activePlant = ContractorManager.getActivePlant();
+        const meterType = meterSel ? meterSel.value : 'main';
+        const sheetNames = workbook && Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
+        if (!workbook || sheetNames.length === 0) {
+          this.showImportSheetError('The Excel workbook does not contain any readable sheets.');
+          return;
+        }
+
+        const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        let expectedNames = [];
+        if (meterType === 'main') {
+          expectedNames = ['Main Meter', 'Main', 'Meter Readings', 'Readings'];
+        } else if (meterType === 'solar') {
+          expectedNames = ['Solar Meter', 'Solar'];
+        } else {
+          const subMeter = activePlant && (activePlant.subMeters || []).find(sub => sub.id === meterType);
+          if (!subMeter) {
+            this.showImportSheetError('The selected sub-meter is no longer configured for this factory.');
+            return;
+          }
+          const exportSheetName = subMeter.name.replace(/[:\\/?*\[\]]/g, '_').substring(0, 31);
+          expectedNames = [subMeter.name, exportSheetName, `${subMeter.name} Meter`, `Meter ${subMeter.name}`];
+        }
+
+        const expectedKeys = new Set(expectedNames.map(normalize));
+        let matchingSheets = sheetNames.filter(name => expectedKeys.has(normalize(name)));
+        const isGenericSingleSheet = sheetNames.length === 1 &&
+          /^(?:sheet\d*|data|import|readings|meterreadings)$/.test(normalize(sheetNames[0]));
+        if (matchingSheets.length === 0 && isGenericSingleSheet) {
+          matchingSheets = [sheetNames[0]];
+        }
+        if (matchingSheets.length !== 1) {
+          this.showImportSheetError(
+            matchingSheets.length > 1
+              ? `More than one Excel sheet matches ${getMeterName(activePlant, meterType)}. Keep only one matching sheet or rename the target sheet.`
+              : `No Excel sheet found for ${getMeterName(activePlant, meterType)}. Expected a sheet named ${expectedNames.map(name => `"${name}"`).join(' or ')}.`
+          );
+          return;
+        }
+
+        const sheetName = matchingSheets[0];
+        const worksheet = workbook.Sheets[sheetName];
+        if (!worksheet) {
+          this.showImportSheetError(`The Excel sheet "${sheetName}" could not be read.`);
+          return;
+        }
+        this.importSourceSheetName = sheetName;
+        this.importRawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        this.processParsedExcelRows(this.importRawRows);
+      },
+
+      showImportSheetError(message) {
+        this.parsedImportRows = [];
+        const previewCont = document.getElementById('importPreviewContainer');
+        const previewSummary = document.getElementById('importPreviewSummary');
+        const previewHead = document.getElementById('importPreviewHead');
+        const previewBody = document.getElementById('importPreviewBody');
+        const execBtn = document.getElementById('btnExecuteImport');
+        if (previewCont) previewCont.style.display = 'block';
+        if (previewSummary) previewSummary.textContent = message;
+        if (previewHead) previewHead.innerHTML = '';
+        if (previewBody) previewBody.innerHTML = '';
+        if (execBtn) {
+          execBtn.disabled = true;
+          execBtn.textContent = 'Select a valid meter sheet';
+        }
+      },
+
       processParsedExcelRows(rows) {
+        this.parsedImportRows = [];
         if (!rows || rows.length < 2) {
-          alert('The selected file is empty or has no data rows.');
+          this.showImportSheetError(
+            `The selected ${this.importSourceSheetName ? `sheet "${this.importSourceSheetName}"` : 'file'} is empty or has no data rows.`
+          );
           return;
         }
 
@@ -9516,7 +9613,9 @@
         }
 
         if (parsedRows.length === 0) {
-          alert('Could not find valid rows with Date and kWh numbers in the file. Please verify your columns.');
+          this.showImportSheetError(
+            `Could not find valid Date and kWh rows in ${this.importSourceSheetName ? `sheet "${this.importSourceSheetName}"` : 'the file'}. Please verify its columns.`
+          );
           return;
         }
 
@@ -9571,7 +9670,11 @@
         const execBtn = document.getElementById('btnExecuteImport');
 
         if (previewSummary) {
-          previewSummary.textContent = `Detected ${parsedRows.length} valid rows (from ${parsedRows[0].date} to ${parsedRows[parsedRows.length - 1].date}):`;
+          const activePlant = ContractorManager.getActivePlant();
+          const meterSel = document.getElementById('importMeterSelect');
+          const meterLabel = getMeterName(activePlant, meterSel ? meterSel.value : 'main');
+          const sourceLabel = this.importSourceSheetName ? ` from "${this.importSourceSheetName}"` : '';
+          previewSummary.textContent = `Detected ${parsedRows.length} valid ${meterLabel} rows${sourceLabel} (from ${parsedRows[0].date} to ${parsedRows[parsedRows.length - 1].date}):`;
         }
 
         this.renderImportPreviewTable();
@@ -9731,15 +9834,16 @@
           HistoryManager.saveAllReadings(allReadings);
           HistoryManager.recalculatePlantReadings(activePlant.id, meterType);
 
+          const undoTimestamp = Date.now();
           const undoPayload = {
             batchId: 'batch_' + Date.now(),
             plantId: activePlant.id,
             plantName: activePlant.name,
             meterType: meterType,
             entryCount: importedCount,
-            timestamp: Date.now(),
-            durationMinutes: Math.max(5, importedCount),
-            expiresAt: Date.now() + (Math.max(5, importedCount) * 60 * 1000),
+            timestamp: undoTimestamp,
+            durationMinutes: 5,
+            expiresAt: undoTimestamp + (5 * 60 * 1000),
             previousAllReadingsSnapshot: preImportSnapshot
           };
           localStorage.setItem('kalpesh_last_import_undo', JSON.stringify(undoPayload));
@@ -9747,7 +9851,9 @@
         }
 
         this.closeImportReadingsModal();
-        this.refreshSelectedFactoryView();
+        this.currentMeterType = meterType;
+        if (isSubMeter) this.activeSubMeterHistoryId = meterType;
+        this.switchTab('tabHistory');
         const skippedCount = duplicateSkippedCount + dateSkippedCount;
         const skipDetails = [
           duplicateSkippedCount ? `${duplicateSkippedCount} already recorded` : '',
