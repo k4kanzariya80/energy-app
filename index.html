@@ -12486,6 +12486,13 @@
 
         // Close any open modals on PC Escape (Esc) key press (Login modal is strictly locked when logged out)
         window.addEventListener('keydown', (e) => {
+          const successModal = document.getElementById('successModal');
+          if (e.key === 'Enter' && successModal && successModal.classList.contains('active')) {
+            e.preventDefault();
+            this.closeSuccessModal();
+            return;
+          }
+
           if (e.key === 'Escape' || e.key === 'Esc') {
             const currentUser = AuthManager.getCurrentUser();
             document.querySelectorAll('.modal-backdrop.active').forEach(m => {
