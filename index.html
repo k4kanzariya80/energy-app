@@ -750,20 +750,11 @@
                 <option value="all">📂 All Time</option>
               </select>
             </div>
-            <!-- Dedicated Electricity Outage Quick Filters -->
-            <div id="electricityFilterPills" style="display:none; gap:6px; align-items:center; flex-wrap:wrap;">
-              <button type="button" id="btnOutageThisMonth" class="btn btn-primary" style="padding:6px 12px; font-size:0.82rem; font-weight:700;" onclick="App.handleHistoryRangeChange('this_month')">
-                📅 Current Month
-              </button>
-              <button type="button" id="btnOutageLastMonth" class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem; font-weight:700;" onclick="App.handleHistoryRangeChange('last_month')">
-                📅 Last Month
-              </button>
-              <button type="button" id="btnOutageAll" class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem; font-weight:700;" onclick="App.handleHistoryRangeChange('all')">
-                📂 All Outages
-              </button>
-            </div>
             <button id="btnAddManualOutage" class="btn btn-primary" style="display:none; padding:6px 12px; font-size:0.82rem; font-weight:700; background:linear-gradient(135deg, #dc2626, #b91c1c); border-color:#b91c1c;" onclick="App.openAddManualOutageModal()" title="Add manual power outage entry">
               ➕ Add Outage
+            </button>
+            <button id="btnExportOutages" class="btn btn-primary" style="display:none; padding:6px 14px; font-size:0.82rem; font-weight:700;" onclick="ExportUtil.exportPowerCutsToExcel()" title="Export filtered outage data to Excel (.xlsx)">
+              📊 Export Outage Data
             </button>
             <button id="btnPasteWhatsApp" class="btn btn-secondary" style="padding:6px 12px; font-size:0.82rem; font-weight:700; color:#16a34a; border-color:#16a34a;" onclick="App.openWhatsAppImportModal()" title="Paste WhatsApp group message to auto-fill readings">
               📋 Paste Text
@@ -4551,29 +4542,38 @@
         }
 
         const now = new Date();
-        const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        let startDate = '';
+        let endDateExclusive = '';
 
         if (rangeOrDate === 'this_month') {
-          return plantCuts.filter(c => c.isActive || getCutStartDate(c).startsWith(curYm) || getCutEndDate(c).startsWith(curYm));
+          startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        } else if (rangeOrDate === 'last_month') {
+          const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          startDate = getDeviceLocalDateString(previousMonthStart);
+          endDateExclusive = getDeviceLocalDateString(currentMonthStart);
+        } else {
+          const cutoffDate = new Date(now);
+          if (rangeOrDate === '3m') {
+            cutoffDate.setDate(cutoffDate.getDate() - 90);
+          } else if (rangeOrDate === '6m') {
+            cutoffDate.setDate(cutoffDate.getDate() - 180);
+          } else if (rangeOrDate === '1y') {
+            cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+          } else {
+            return plantCuts;
+          }
+          startDate = getDeviceLocalDateString(cutoffDate);
         }
 
-        if (rangeOrDate === 'last_month') {
-          const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const prevYm = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-          return plantCuts.filter(c => getCutStartDate(c).startsWith(prevYm) || getCutEndDate(c).startsWith(prevYm));
-        }
-
-        if (rangeOrDate === '3m') {
-          const cutoff = getDeviceLocalDateString(new Date(now.getFullYear(), now.getMonth() - 2, 1));
-          return plantCuts.filter(c => c.isActive || getCutStartDate(c) >= cutoff || getCutEndDate(c) >= cutoff);
-        }
-
-        if (rangeOrDate === '6m') {
-          const cutoff = getDeviceLocalDateString(new Date(now.getFullYear(), now.getMonth() - 5, 1));
-          return plantCuts.filter(c => c.isActive || getCutStartDate(c) >= cutoff || getCutEndDate(c) >= cutoff);
-        }
-
-        return plantCuts;
+        const today = getDeviceLocalDateString(now);
+        return plantCuts.filter(c => {
+          const cutStartDate = getCutStartDate(c);
+          const cutEndDate = getCutEndDate(c);
+          const startsBeforeRangeEnd = !endDateExclusive || cutStartDate < endDateExclusive;
+          const continuesIntoRange = c.isActive ? today >= startDate : cutEndDate >= startDate;
+          return startsBeforeRangeEnd && continuesIntoRange;
+        });
       },
 
       getActiveCut(plantId) {
@@ -5735,12 +5735,8 @@
           meterLabel.textContent = mLabelName;
         }
 
-        const elecFilterPills = document.getElementById('electricityFilterPills');
-        if (elecFilterPills) {
-          elecFilterPills.style.display = isElectricity ? 'inline-flex' : 'none';
-        }
         if (historyRangeWrapper) {
-          historyRangeWrapper.style.display = isElectricity ? 'none' : 'inline-flex';
+          historyRangeWrapper.style.display = 'inline-flex';
         }
         const btnPaste = document.getElementById('btnPasteWhatsApp');
         if (btnPaste) btnPaste.style.display = (!isViewer && !isElectricity) ? 'inline-flex' : 'none';
@@ -5750,6 +5746,9 @@
 
         const btnExport = document.getElementById('btnExportCsv');
         if (btnExport) btnExport.style.display = isElectricity ? 'none' : 'inline-flex';
+
+        const btnExportOutages = document.getElementById('btnExportOutages');
+        if (btnExportOutages) btnExportOutages.style.display = isElectricity ? 'inline-flex' : 'none';
 
         const btnAddManual = document.getElementById('btnAddManualOutage');
         if (btnAddManual) {
@@ -5810,17 +5809,18 @@
           const cuts = PowerCutManager.getPlantPowerCuts(plantId, outageRange);
           tbody.innerHTML = '';
 
-          const btnThis = document.getElementById('btnOutageThisMonth');
-          const btnLast = document.getElementById('btnOutageLastMonth');
-          const btnAll = document.getElementById('btnOutageAll');
-          if (btnThis) btnThis.className = (outageRange === 'this_month') ? 'btn btn-primary' : 'btn btn-secondary';
-          if (btnLast) btnLast.className = (outageRange === 'last_month') ? 'btn btn-primary' : 'btn btn-secondary';
-          if (btnAll) btnAll.className = (outageRange === 'all') ? 'btn btn-primary' : 'btn btn-secondary';
-
           if (cuts.length === 0) {
             if (emptyState) {
               emptyState.style.display = 'block';
-              const rangeLabel = (outageRange === 'last_month') ? 'Last Month' : (outageRange === 'all' ? 'All Time' : 'Current Month');
+              const rangeLabels = {
+                this_month: 'Current Month',
+                last_month: 'Last Month',
+                '3m': 'Last 3 Months',
+                '6m': 'Last 6 Months',
+                '1y': 'Last 1 Year',
+                all: 'All Time'
+              };
+              const rangeLabel = rangeLabels[outageRange] || 'selected range';
               emptyState.textContent = `No electricity outages recorded for this factory in ${rangeLabel}.`;
             }
             return;
@@ -6346,6 +6346,59 @@
 
         App.closeExportBackupModal();
         App.showToast(`📤 Exported system backup for ${plant.name} successfully!`);
+      },
+
+      exportPowerCutsToExcel() {
+        const plant = ContractorManager.getActivePlant();
+        if (!plant) {
+          return alert('Please select a factory first.');
+        }
+        if (!window.XLSX) {
+          return alert('Excel library not loaded. Please try again when the app is online.');
+        }
+
+        const range = App.historyFilterRange || 'this_month';
+        const rangeLabels = {
+          this_month: 'Current Month',
+          last_month: 'Last Month',
+          '3m': 'Last 3 Months',
+          '6m': 'Last 6 Months',
+          '1y': 'Last 1 Year',
+          all: 'All Time'
+        };
+        const rangeLabel = rangeLabels[range] || range;
+        const cuts = PowerCutManager.getPlantPowerCuts(plant.id, range);
+        if (cuts.length === 0) {
+          return alert(`No electricity outages found for ${rangeLabel}.`);
+        }
+
+        const rows = cuts.map(c => {
+          const startTimestamp = c.startTimestamp || (c.date ? new Date(`${c.date}T00:00:00`).getTime() : 0);
+          const endTimestamp = c.endTimestamp || (c.durationMins ? startTimestamp + c.durationMins * 60000 : 0);
+          const durationMins = c.isActive
+            ? Math.max(0, Math.round((Date.now() - startTimestamp) / 60000))
+            : (c.durationMins || '');
+          return [
+            rangeLabel,
+            c.startTimestamp ? getDeviceLocalDateString(new Date(c.startTimestamp)) : (c.date || ''),
+            c.startTime || '',
+            c.isActive ? '' : (endTimestamp ? getDeviceLocalDateString(new Date(endTimestamp)) : (c.date || '')),
+            c.isActive ? '' : (c.endTime || ''),
+            durationMins,
+            c.isActive ? 'Active' : 'Restored',
+            c.recordedBy || 'Staff'
+          ];
+        });
+        const headers = ['Date Range', 'Outage Date', 'Start Time', 'Restored Date', 'Restore Time', 'Duration (minutes)', 'Status', 'Recorded By'];
+        const worksheet = window.XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        worksheet['!cols'] = headers.map((header, index) => ({
+          wch: Math.min(32, Math.max(header.length, ...rows.map(row => String(row[index] ?? '').length)) + 2)
+        }));
+        const workbook = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(workbook, worksheet, 'Outages');
+        const cleanName = (plant.name || 'Factory').replace(/[^a-zA-Z0-9]/g, '_');
+        window.XLSX.writeFile(workbook, `Electricity_Outages_${cleanName}_${range}_${getDeviceLocalDateString()}.xlsx`);
+        App.showToast(`📊 Exported ${cuts.length} outage records for ${rangeLabel} (.xlsx)!`);
       },
 
       getPreparedExportData() {
