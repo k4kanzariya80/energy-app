@@ -145,6 +145,66 @@
             return 'Estimate controls and calculator removed; dashboard readings and report export remain';
           });
 
+          check('meter reset and factory save controls appear above Sub-Meters and retain save behavior', () => {
+            const resetBox = appDocument.getElementById('settingMeterResetFlag').closest('.admin-reset-box');
+            const resetCheckbox = appDocument.getElementById('settingMeterResetFlag');
+            const saveButton = appDocument.getElementById('btnSavePlantSettings');
+            const saveActions = saveButton.closest('.form-actions');
+            const subMetersPanel = appDocument.getElementById('settingSubMetersList').parentElement;
+            const followsSubMeters = node => !!(node.compareDocumentPosition(subMetersPanel) & appWindow.Node.DOCUMENT_POSITION_FOLLOWING);
+            assert(resetCheckbox.type === 'checkbox' && saveButton.type === 'submit', 'reset and factory-save controls must keep their existing form semantics');
+            assert(followsSubMeters(resetBox) && followsSubMeters(saveActions), 'the reset option and Save Factory Settings action must both precede the Sub-Meters panel');
+            assert(resetCheckbox.disabled && saveButton.disabled, 'settings must remain locked by default');
+
+            const previousResetChecked = resetCheckbox.checked;
+            appWindow.eval(`
+              window.__meterSettingsOriginals = {
+                getActivePlant: ContractorManager.getActivePlant,
+                updatePlant: ContractorManager.updatePlant,
+                getCurrentUser: AuthManager.getCurrentUser,
+                confirm: window.confirm,
+                showToast: App.showToast,
+                refreshSelectedFactoryView: App.refreshSelectedFactoryView,
+                isEditingPlantSettings: App.isEditingPlantSettings
+              };
+              window.__meterSettingsUpdate = null;
+              ContractorManager.getActivePlant = () => ({ id: 'factory-settings-regression' });
+              ContractorManager.updatePlant = (id, values) => { window.__meterSettingsUpdate = { id, values }; };
+              AuthManager.getCurrentUser = () => ({ role: 'admin' });
+              window.confirm = () => true;
+              App.showToast = () => {};
+              App.refreshSelectedFactoryView = () => {};
+            `);
+            try {
+              appWindow.App.applyPlantSettingsLockState(true);
+              assert(!resetCheckbox.disabled && !saveButton.disabled, 'unlocking settings must enable the reset checkbox and save action');
+              resetCheckbox.checked = true;
+              appDocument.getElementById('settingPlantName').value = 'Regression Factory';
+              let prevented = false;
+              appWindow.App.handleSavePlantSettings({ preventDefault() { prevented = true; } });
+              const update = appWindow.__meterSettingsUpdate;
+              assert(prevented, 'saving settings must prevent native form submission');
+              assert(update && update.id === 'factory-settings-regression', 'saving must update the active factory');
+              assert(update.values.isMeterReset === true, 'saving must persist the selected new-meter reset option');
+              assert(resetCheckbox.disabled && saveButton.disabled, 'saving must return settings to the locked state');
+              return 'Controls remain locked until edit, precede Sub-Meters, and the reset choice is saved';
+            } finally {
+              resetCheckbox.checked = previousResetChecked;
+              appWindow.eval(`
+                const originals = window.__meterSettingsOriginals;
+                ContractorManager.getActivePlant = originals.getActivePlant;
+                ContractorManager.updatePlant = originals.updatePlant;
+                AuthManager.getCurrentUser = originals.getCurrentUser;
+                window.confirm = originals.confirm;
+                App.showToast = originals.showToast;
+                App.refreshSelectedFactoryView = originals.refreshSelectedFactoryView;
+                App.applyPlantSettingsLockState(originals.isEditingPlantSettings);
+                delete window.__meterSettingsOriginals;
+                delete window.__meterSettingsUpdate;
+              `);
+            }
+          });
+
           check('dashboard unit totals display kWh only while preserving high values', () => {
             const latestReading = fixtureReadings.find(item => item.plantId === 'factory-a' && item.meterType === 'main');
             const originalDelta = latestReading.deltaKwh;
