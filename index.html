@@ -128,6 +128,8 @@
 
     /* Metrics Grid */
     .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .metric-card { position: relative; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); box-shadow: var(--shadow-sm); }
+    .power-factor-dashboard-card, #cardMetricMd { align-self: start; padding: 12px 14px; }
     .metric-period-label, .metric-meter-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
     .metric-period-label { display: inline-flex; align-items: center; white-space: nowrap; }
     .metric-meter-selector { position: relative; z-index: 2; min-width: 0; }
@@ -379,11 +381,12 @@
       #btnHeaderGuide { padding: 4px 8px !important; }
       #btnHeaderGuide span:last-child { display: none; }
       #btnUserRole { padding: 4px 8px !important; gap: 4px !important; margin-left: 0 !important; }
-      .metrics-grid { grid-template-columns: 1fr 1fr; }
+      .metrics-grid { grid-template-columns: 1fr 1fr; align-items: start; }
       #cardMetricUnits { grid-column: 1; grid-row: 1; }
-      #cardMetricAverageUnits { grid-column: 2; grid-row: 1; }
-      #cardMetricPf { grid-column: 1; grid-row: 2; }
+      #cardMetricPf { grid-column: 2; grid-row: 1; }
+      #cardMetricAverageUnits { grid-column: 1; grid-row: 2; }
       #cardMetricMd { grid-column: 2; grid-row: 2; }
+      .power-factor-dashboard-card, #cardMetricMd { padding: 10px 10px; }
       .metric-value { font-size: 1.3rem; }
       .form-grid { grid-template-columns: 1fr; }
       .meter-type-bar { padding: 4px 10px !important; background: transparent !important; border-bottom: none !important; }
@@ -541,6 +544,19 @@
           </div>
         </div>
 
+        <div class="metric-card success power-factor-dashboard-card" id="cardMetricPf">
+          <div class="metric-header">
+            <span class="metric-title" id="lblMetricPfTitle">Power Factor</span>
+            <span class="metric-icon">🎯</span>
+          </div>
+          <div class="metric-value">
+            <span id="metricPf">1.000</span>
+          </div>
+          <div style="margin-top:6px;">
+            <span id="metricPfBadge" class="pf-badge good">🟢 Excellent</span>
+          </div>
+        </div>
+
         <div class="metric-card" id="cardMetricAverageUnits">
           <button type="button" id="dashboardAverageDays" class="metric-card-cycle-button" aria-label="Average Daily Main Meter Units. 7 days. Activate to show 15 days." onclick="App.cycleDashboardAverageDays()"></button>
           <div class="metric-card-content">
@@ -558,19 +574,6 @@
               <span id="metricAverageUnits" aria-live="polite">—</span>
             </div>
             <span id="metricAverageCoverage" class="metric-average-coverage" title="Intervals crossing the window boundary are prorated by days elapsed. Only days covered by stored readings count toward the average.">No readings in the last 7 days</span>
-          </div>
-        </div>
-
-        <div class="metric-card success power-factor-dashboard-card" id="cardMetricPf">
-          <div class="metric-header">
-            <span class="metric-title" id="lblMetricPfTitle">Power Factor</span>
-            <span class="metric-icon">🎯</span>
-          </div>
-          <div class="metric-value">
-            <span id="metricPf">1.000</span>
-          </div>
-          <div style="margin-top:6px;">
-            <span id="metricPfBadge" class="pf-badge good">🟢 Excellent</span>
           </div>
         </div>
       </div>
@@ -633,7 +636,6 @@
             <select id="inputDaySelect" class="form-control" style="font-weight:700; font-size:1rem;" onchange="App.handleDaySelectChange()" aria-label="Quick-select an available reading date">
             </select>
             <input type="date" id="inputDate" class="form-control" form="dailyReadingForm" style="display:none; font-weight:700; padding:8px 12px;" onchange="App.handleCustomDateChange()" required aria-label="Reading date for main and sub-meter entries">
-            <small style="color:var(--text-muted); font-size:0.76rem;">This date is shared by the main-meter form and every sub-meter save below. Editors can enter today and the previous 4 days; Admins are unrestricted.</small>
           </div>
         </div>
       </div>
@@ -7837,7 +7839,6 @@
         const todayDay = now.getDate();
         const daySelect = document.getElementById('inputDaySelect');
         const dateInput = document.getElementById('inputDate');
-        const preserveCustomDate = daySelect && daySelect.value === 'custom' && dateInput && dateInput.value;
 
         const plant = ContractorManager.getActivePlant();
         const plantId = plant ? plant.id : null;
@@ -7899,7 +7900,6 @@
           customOpt.style.fontWeight = '700';
           customOpt.style.color = '#2563eb';
           daySelect.appendChild(customOpt);
-          if (preserveCustomDate) daySelect.value = 'custom';
         }
 
         // Toggle form inputs
@@ -7933,19 +7933,17 @@
         const dateInput = document.getElementById('inputDate');
         if (!dateInput) return;
 
-        dateInput.style.display = daySelect && daySelect.value === 'custom' ? 'block' : 'none';
-        if (daySelect && daySelect.value !== 'custom' && daySelect.value) {
-          const now = new Date();
-          const year = now.getFullYear();
-          const month = now.getMonth() + 1;
-          const selectedVal = daySelect.value;
-          const day = parseInt(selectedVal);
+        const isCustomDateSelected = daySelect && daySelect.value === 'custom';
+        dateInput.style.display = isCustomDateSelected ? 'block' : 'none';
+        if (daySelect && !isCustomDateSelected) {
+          const day = parseInt(daySelect.value, 10);
           if (Number.isInteger(day)) {
-            const formattedMonth = month < 10 ? `0${month}` : `${month}`;
-            const formattedDay = day < 10 ? `0${day}` : `${day}`;
-            dateInput.value = `${year}-${formattedMonth}-${formattedDay}`;
-          } else if (!dateInput.value) {
-            dateInput.value = getDeviceLocalDateString();
+            const now = new Date();
+            const formattedMonth = String(now.getMonth() + 1).padStart(2, '0');
+            const formattedDay = String(day).padStart(2, '0');
+            dateInput.value = `${now.getFullYear()}-${formattedMonth}-${formattedDay}`;
+          } else {
+            dateInput.value = '';
           }
         } else if (!dateInput.value) {
           dateInput.value = getDeviceLocalDateString();

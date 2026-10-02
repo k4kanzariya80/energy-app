@@ -231,6 +231,85 @@
             assert(appDocument.getElementById('previewPf').textContent === '0.950', 'entry-form PF preview must still render');
             return 'Existing entry-form units and PF previews remain unchanged';
           });
+          check('date picker appears only for an explicit custom selection and resets with context', () => {
+            const dateSection = appDocument.getElementById('readingDateSection');
+            const daySelect = appDocument.getElementById('inputDaySelect');
+            const dateInput = appDocument.getElementById('inputDate');
+            appWindow.eval(`
+              window.__dashboardDatePickerOriginals = {
+                getActivePlant: ContractorManager.getActivePlant,
+                getAllReadings: HistoryManager.getAllReadings,
+                currentMeterType: App.currentMeterType,
+                handleLiveFormCalculation: App.handleLiveFormCalculation,
+                updatePreviousHints: App.updatePreviousHints,
+                renderSubMetersEntryList: App.renderSubMetersEntryList
+              };
+              const now = new Date();
+              const pad = value => String(value).padStart(2, '0');
+              window.__dashboardDateTestPlant = { id: 'factory-a', subMeters: [] };
+              window.__dashboardDateTestReadings = Array.from({ length: now.getDate() }, (_, index) => ({
+                plantId: 'factory-a',
+                meterType: 'main',
+                date: \`\${now.getFullYear()}-\${pad(now.getMonth() + 1)}-\${pad(index + 1)}\`
+              }));
+              ContractorManager.getActivePlant = () => window.__dashboardDateTestPlant;
+              HistoryManager.getAllReadings = () => window.__dashboardDateTestReadings;
+              App.handleLiveFormCalculation = () => {};
+              App.updatePreviousHints = () => {};
+              App.renderSubMetersEntryList = () => {};
+              App.currentMeterType = 'main';
+            `);
+            try {
+              appWindow.App.initDayPicker();
+              assert(daySelect.querySelector('option[value="custom"]'), 'Custom Date must remain available even when the month is complete');
+              assert(daySelect.value !== 'custom', 'a rebuilt selector must not restore a stale Custom Date option');
+              assert(appWindow.getComputedStyle(dateInput).display === 'none', 'completed month must keep the native date picker hidden');
+              assert(dateInput.value === '', 'completed month must not retain a stale custom date');
+              assert(dateSection.querySelectorAll('input[type="date"]').length === 1, 'reading date section must contain only the shared date picker');
+              assert(dateSection.querySelectorAll('small').length === 0, 'the removed Reading Date hint must not return');
+
+              daySelect.value = 'custom';
+              appWindow.App.handleDaySelectChange();
+              assert(appWindow.getComputedStyle(dateInput).display !== 'none', 'explicit Custom Date selection must reveal the native picker');
+              dateInput.value = dateDaysAgo(0);
+              dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+              assert(daySelect.value === 'custom' && appWindow.getComputedStyle(dateInput).display !== 'none', 'custom date entry must remain available after selecting a date');
+
+              appWindow.App.initDayPicker();
+              assert(daySelect.value !== 'custom' && appWindow.getComputedStyle(dateInput).display === 'none', 'refreshing an exhausted month must clear the stale custom selection');
+              assert(dateInput.value === '', 'refreshing an exhausted month must clear the previous custom value');
+
+              appWindow.__dashboardDateTestPlant = { id: 'factory-b', subMeters: [] };
+              daySelect.value = 'custom';
+              dateInput.value = dateDaysAgo(0);
+              appWindow.App.initDayPicker();
+              assert(daySelect.value !== 'custom' && appWindow.getComputedStyle(dateInput).display === 'none', 'changing factory context must not carry over Custom Date');
+
+              appWindow.__dashboardDateTestPlant = { id: 'factory-a', subMeters: [] };
+              appWindow.App.currentMeterType = 'solar';
+              daySelect.value = 'custom';
+              dateInput.value = dateDaysAgo(0);
+              appWindow.App.initDayPicker();
+              assert(daySelect.value !== 'custom' && appWindow.getComputedStyle(dateInput).display === 'none', 'changing meter context must not carry over Custom Date');
+              daySelect.value = String(new Date().getDate());
+              appWindow.App.handleDaySelectChange();
+              assert(appWindow.getComputedStyle(dateInput).display === 'none', 'choosing a date preset must hide the native picker');
+              return 'Exhausted-month, factory, meter, and preset changes hide the picker; explicit Custom Date still works';
+            } finally {
+              appWindow.eval(`
+                const original = window.__dashboardDatePickerOriginals;
+                ContractorManager.getActivePlant = original.getActivePlant;
+                HistoryManager.getAllReadings = original.getAllReadings;
+                App.currentMeterType = original.currentMeterType;
+                App.handleLiveFormCalculation = original.handleLiveFormCalculation;
+                App.updatePreviousHints = original.updatePreviousHints;
+                App.renderSubMetersEntryList = original.renderSubMetersEntryList;
+                delete window.__dashboardDatePickerOriginals;
+                delete window.__dashboardDateTestPlant;
+                delete window.__dashboardDateTestReadings;
+              `);
+            }
+          });
           check('one visible shared date picker is used by each sub-meter entry and validation', () => {
             const dateSection = appDocument.getElementById('readingDateSection');
             const dateInput = appDocument.getElementById('inputDate');
@@ -377,7 +456,7 @@
             assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Solar Enter must show the existing duplicate error');
             return 'Main and Solar Enter submissions save once; invalid and duplicate entries remain blocked';
           });
-          check('mobile metric cards pair readings above Power Factor and Maximum Demand', () => {
+          check('dashboard metric order and compact PF/MD cards work on mobile and desktop', () => {
             const grid = appDocument.querySelector('.metrics-grid');
             assert(appWindow.matchMedia('(max-width: 640px)').matches, 'test frame must use the mobile breakpoint');
             const units = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
@@ -385,17 +464,42 @@
             const pf = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
             const md = appWindow.getComputedStyle(appDocument.getElementById('cardMetricMd'));
             assert(units.gridColumnStart === '1' && units.gridRowStart === '1', 'Today’s Units must be top-left');
-            assert(average.gridColumnStart === '2' && average.gridRowStart === '1', 'Average Daily Units must be top-right');
-            assert(pf.gridColumnStart === '1' && pf.gridRowStart === '2', 'Power Factor must be bottom-left');
+            assert(pf.gridColumnStart === '2' && pf.gridRowStart === '1', 'Power Factor must be top-right after swapping slots with Average Daily Units');
+            assert(average.gridColumnStart === '1' && average.gridRowStart === '2', 'Average Daily Units must be bottom-left after swapping slots with Power Factor');
             assert(md.gridColumnStart === '2' && md.gridRowStart === '2', 'Maximum Demand must be bottom-right');
-            const pfGridColumn = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
-            assert(pfGridColumn.gridColumnEnd !== '-1', 'Power Factor must not span a full-width row');
+            for (const id of ['cardMetricPf', 'cardMetricMd']) {
+              const compact = appDocument.getElementById(id);
+              const compactStyle = appWindow.getComputedStyle(compact);
+              const fullStyle = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
+              assert(parseFloat(compactStyle.paddingTop) < parseFloat(fullStyle.paddingTop), `${id} must use less padding than the main readings card`);
+              assert(compactStyle.alignSelf === 'start', `${id} must not stretch to the taller card in its grid row`);
+              for (const childId of id === 'cardMetricPf'
+                ? ['lblMetricPfTitle', 'metricPf', 'metricPfBadge']
+                : ['lblMetricMdTitle', 'metricMd', 'metricMdBadge']) {
+                const child = appDocument.getElementById(childId);
+                assert(child.getClientRects().length > 0 && appWindow.getComputedStyle(child).visibility !== 'hidden', `${childId} must remain visible`);
+              }
+            }
+            assert(appDocument.getElementById('cardMetricPf').getBoundingClientRect().height < appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height, 'Power Factor must remain compact instead of stretching to the Average card height');
+            assert(appDocument.getElementById('cardMetricMd').getBoundingClientRect().height < appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height, 'Maximum Demand must remain compact instead of stretching to the Average card height');
             const originalWidth = frame.style.width;
             frame.style.width = '1024px';
             const desktopColumns = appWindow.getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+            const desktopPositions = ['cardMetricUnits', 'cardMetricMd', 'cardMetricPf', 'cardMetricAverageUnits']
+              .map(id => appDocument.getElementById(id).getBoundingClientRect().left);
+            const desktopAverageHeight = appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height;
+            for (const id of ['cardMetricPf', 'cardMetricMd']) {
+              const compact = appDocument.getElementById(id);
+              const compactStyle = appWindow.getComputedStyle(compact);
+              const fullStyle = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
+              assert(parseFloat(compactStyle.paddingTop) < parseFloat(fullStyle.paddingTop), `${id} must stay compact on desktop`);
+              assert(compactStyle.alignSelf === 'start', `${id} must not stretch on desktop`);
+              assert(compact.getBoundingClientRect().height < desktopAverageHeight, `${id} must remain shorter than Average Daily Units on desktop`);
+            }
             frame.style.width = originalWidth;
             assert(desktopColumns >= 4, 'desktop metric grid must retain its multi-column layout');
-            return 'Mobile rows are paired; desktop remains a multi-column grid';
+            assert(desktopPositions.every((left, index) => index === 0 || left > desktopPositions[index - 1]), 'desktop order must place Units, Maximum Demand, Power Factor, then Average Daily Units');
+            return 'Mobile positions swap Average/PF; compact values and badges stay visible, while desktop remains four-column and ordered';
           });
 
           status.textContent = 'Browser regression checks complete.';
