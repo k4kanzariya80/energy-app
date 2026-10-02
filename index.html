@@ -129,9 +129,8 @@
     /* Metrics Grid */
     .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
     .metric-card { position: relative; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); box-shadow: var(--shadow-sm); }
-    .power-factor-dashboard-card, #cardMetricMd { align-self: start; padding: 12px 14px; }
-    .metric-period-label, .metric-meter-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
-    .metric-period-label { display: inline-flex; align-items: center; white-space: nowrap; }
+    .power-factor-dashboard-card, #cardMetricMd { padding: 12px 14px; }
+    .metric-meter-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
     .metric-meter-selector { position: relative; z-index: 2; min-width: 0; }
     #cardMetricAverageUnits { position: relative; isolation: isolate; }
     .metric-card-cycle-button { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
@@ -156,7 +155,6 @@
     .metric-title { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
     .metric-value { font-size: 1.7rem; font-weight: 800; color: var(--text-main); line-height: 1.2; transition: color 0.25s ease; }
     .metric-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
-    .metric-average-coverage { display: block; margin-top: 6px; color: var(--text-muted); font-size: 0.72rem; }
 
     .pf-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.78rem; font-weight: 700; transition: all 0.2s ease; }
     .pf-badge.good { background: #dcfce7; color: #15803d; border: 1px solid rgba(22, 163, 74, 0.35); }
@@ -381,7 +379,7 @@
       #btnHeaderGuide { padding: 4px 8px !important; }
       #btnHeaderGuide span:last-child { display: none; }
       #btnUserRole { padding: 4px 8px !important; gap: 4px !important; margin-left: 0 !important; }
-      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .metrics-grid > .metric-card { min-width: 0; padding: 12px; }
       #cardMetricUnits { order: 1; }
       #cardMetricAverageUnits { order: 2; }
@@ -391,9 +389,8 @@
       .metric-title { font-size: 0.7rem; line-height: 1.25; }
       .metric-value { font-size: 1.2rem; }
       .metric-controls { gap: 4px; margin: 4px 0; }
-      .metric-period-label, .metric-meter-button { min-height: 34px; padding: 5px 8px; font-size: 0.72rem; }
+      .metric-meter-button { min-height: 34px; padding: 5px 8px; font-size: 0.72rem; }
       .metric-meter-button { max-width: 112px; }
-      .metric-average-coverage { margin-top: 4px; font-size: 0.66rem; line-height: 1.3; }
       .pf-badge { gap: 3px; padding: 3px 7px; font-size: 0.7rem; }
       #cardMetricPf > div[style], #cardMetricMd > div[style] { margin-top: 4px !important; }
       .form-grid { grid-template-columns: 1fr; }
@@ -569,10 +566,9 @@
           <button type="button" id="dashboardAverageDays" class="metric-card-cycle-button" aria-label="Average Daily Main Meter Units. 7 days. Activate to show 15 days." onclick="App.cycleDashboardAverageDays()"></button>
           <div class="metric-card-content">
             <div class="metric-header">
-              <span class="metric-title" id="lblMetricAverageTitle">Average Daily Main Meter Units</span>
+              <span class="metric-title" id="lblMetricAverageTitle">Average Daily Main Meter Units · 7 days</span>
             </div>
-            <div class="metric-controls">
-              <span id="dashboardAverageDaysLabel" class="metric-period-label">7 days</span>
+            <div class="metric-controls" style="display:none;">
               <div class="metric-meter-selector" id="dashboardAverageMeterSelector" style="display:none;">
                 <button type="button" id="dashboardAverageMeterButton" class="metric-meter-button" aria-label="Choose a sub-meter average" aria-haspopup="true" aria-expanded="false" aria-controls="dashboardAverageMeterMenu" onclick="App.toggleDashboardAverageMeterMenu()">🔌 Choose</button>
                 <div id="dashboardAverageMeterMenu" class="metric-meter-menu" role="group" aria-label="Choose a sub-meter average" hidden></div>
@@ -581,7 +577,6 @@
             <div class="metric-value">
               <span id="metricAverageUnits" aria-live="polite">—</span>
             </div>
-            <span id="metricAverageCoverage" class="metric-average-coverage" title="Intervals crossing the window boundary are prorated by days elapsed. Only days covered by stored readings count toward the average.">No readings in the last 7 days</span>
           </div>
         </div>
       </div>
@@ -3002,6 +2997,11 @@
       }
 
       return `${num.toLocaleString()} ${unit}`;
+    }
+
+    function formatDashboardKwhValue(val) {
+      if (val === null || val === undefined || isNaN(val)) return '0 kWh';
+      return `${parseFloat(val).toLocaleString()} kWh`;
     }
 
     // 1. Meter Calculation Engine
@@ -7407,8 +7407,6 @@
         if (mMd) { mMd.textContent = '0 kW'; mMd.style.color = ''; }
         const averageUnits = document.getElementById('metricAverageUnits');
         if (averageUnits) averageUnits.textContent = '—';
-        const averageCoverage = document.getElementById('metricAverageCoverage');
-        if (averageCoverage) averageCoverage.textContent = `No readings in the last ${this.dashboardAverageDays} days`;
         const pfBadge = document.getElementById('metricPfBadge');
         if (pfBadge) { pfBadge.className = 'pf-badge good'; pfBadge.textContent = '🟢 Excellent'; }
         const mdBadge = document.getElementById('metricMdBadge');
@@ -8309,7 +8307,8 @@
         const button = document.getElementById('dashboardAverageMeterButton');
         const menu = document.getElementById('dashboardAverageMeterMenu');
         const selector = document.getElementById('dashboardAverageMeterSelector');
-        if (!button || !menu || !selector) return;
+        const controls = selector ? selector.parentElement : null;
+        if (!button || !menu || !selector || !controls) return;
 
         const options = this.getDashboardAverageMeterOptions(plant);
         const isSubMeters = this.currentMeterType === 'submeters' ||
@@ -8317,6 +8316,7 @@
         const selected = options.find(option => option.value === this.dashboardAverageMeterType);
         const showSelector = isSubMeters && options.length > 0;
         if (!showSelector) this.dashboardAverageMeterMenuOpen = false;
+        controls.style.display = showSelector ? 'flex' : 'none';
         selector.style.display = showSelector ? 'block' : 'none';
         button.textContent = selected ? selected.buttonLabel : '🔌 All';
         button.setAttribute('aria-label', selected
@@ -8356,7 +8356,6 @@
         const metricPf = document.getElementById('metricPf');
         const metricMd = document.getElementById('metricMd');
         const metricAverageUnits = document.getElementById('metricAverageUnits');
-        const metricAverageCoverage = document.getElementById('metricAverageCoverage');
         const averageDaysButton = document.getElementById('dashboardAverageDays');
         const windowDays = [7, 15, 30].includes(this.dashboardAverageDays) ? this.dashboardAverageDays : 7;
         const isSolar = (this.currentMeterType === 'solar');
@@ -8395,25 +8394,20 @@
             ? `Sub-Meter Units${selectedAverageSubMeter ? ` · ${selectedAverageSubMeter.name}` : ''}`
             : 'Main Meter Units');
 
-        if (lblAverage) lblAverage.textContent = `Average Daily ${averageMeterLabel}`;
+        if (lblAverage) lblAverage.textContent = `Average Daily ${averageMeterLabel} · ${windowDays} days`;
         if (averageDaysButton) {
           const nextDays = { 7: 15, 15: 30, 30: 7 };
-          const periodLabel = document.getElementById('dashboardAverageDaysLabel');
-          if (periodLabel) periodLabel.textContent = `${windowDays} days`;
           averageDaysButton.setAttribute('aria-label', `Average Daily ${averageMeterLabel}. ${windowDays} days. Activate to show ${nextDays[windowDays]} days.`);
         }
         this.renderDashboardAverageMeterOptions(activePlant);
         const renderAverage = summary => {
           if (!summary || !summary.coveredDays || summary.averageKwhPerDay === null) {
             if (metricAverageUnits) metricAverageUnits.textContent = '—';
-            if (metricAverageCoverage) metricAverageCoverage.textContent = `No readings in the last ${windowDays} days`;
             return;
           }
           if (metricAverageUnits) {
             metricAverageUnits.textContent = `${summary.averageKwhPerDay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kWh/day`;
           }
-          const coverageUnit = isAverageAllSubMeters ? 'meter-days' : 'recorded days';
-          if (metricAverageCoverage) metricAverageCoverage.textContent = `Based on ${summary.coveredDays} ${coverageUnit} in the last ${windowDays} days`;
         };
 
         if (cardUnits) {
@@ -8476,7 +8470,7 @@
               if (readings.length > 0) totalSubKwh += (readings[0].deltaKwh || 0);
             });
           }
-          if (metricUnits) metricUnits.textContent = formatEnergyValue(totalSubKwh, true);
+          if (metricUnits) metricUnits.textContent = formatDashboardKwhValue(totalSubKwh);
           return;
         }
         const readings = HistoryManager.getReadingsForPlant(plantId, this.currentMeterType);
@@ -8495,7 +8489,7 @@
         }
 
         const latest = readings[0];
-        if (metricUnits) metricUnits.textContent = formatEnergyValue(latest.deltaKwh, true);
+        if (metricUnits) metricUnits.textContent = formatDashboardKwhValue(latest.deltaKwh);
 
         // Dynamic PF Styling & Card update
         const pfVal = (typeof latest.calculatedPf === 'number') ? latest.calculatedPf : 1.0;

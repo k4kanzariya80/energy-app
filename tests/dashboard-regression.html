@@ -104,7 +104,7 @@
           `);
 
           const periodButton = appDocument.getElementById('dashboardAverageDays');
-          const periodLabel = appDocument.getElementById('dashboardAverageDaysLabel');
+          const averageTitle = appDocument.getElementById('lblMetricAverageTitle');
           const averageCard = appDocument.getElementById('cardMetricAverageUnits');
           const averageValue = appDocument.getElementById('metricAverageUnits');
           function chooseDays(days) {
@@ -145,24 +145,40 @@
             return 'Estimate controls and calculator removed; dashboard readings and report export remain';
           });
 
+          check('dashboard unit totals display kWh only while preserving high values', () => {
+            const latestReading = fixtureReadings.find(item => item.plantId === 'factory-a' && item.meterType === 'main');
+            const originalDelta = latestReading.deltaKwh;
+            latestReading.deltaKwh = 1250;
+            appWindow.App.refreshDashboardMetrics('factory-a');
+            assert(appDocument.getElementById('metricUnits').textContent === '1,250 kWh', `expected 1,250 kWh only, received ${appDocument.getElementById('metricUnits').textContent}`);
+            assert(!appDocument.getElementById('metricUnits').textContent.includes('MWh'), 'dashboard units must not include an MWh presentation');
+            latestReading.deltaKwh = originalDelta;
+            appWindow.App.refreshDashboardMetrics('factory-a');
+            return 'Large dashboard values remain expressed only in kWh';
+          });
+
           check('the full average card cycles 7 to 15 to 30 days and wraps to 7', () => {
-            assert(periodLabel.textContent === '7 days', '7 days must be the initial period');
+            assert(averageTitle.textContent === 'Average Daily Main Meter Units · 7 days', 'the title must include the initial period');
+            assert(!appDocument.getElementById('dashboardAverageDaysLabel'), 'a separate period label must not be present');
+            assert(!appDocument.getElementById('metricAverageCoverage'), 'average hints must not be present');
             assert(periodButton.getAttribute('aria-label').includes('15 days'), 'accessible label must describe the next period');
             assert(periodButton.tagName === 'BUTTON' && periodButton.type === 'button', 'period control must have button semantics');
             assert(periodButton.tabIndex >= 0, 'period control must be reachable by keyboard');
+            periodButton.focus();
+            assert(appDocument.activeElement === periodButton, 'period control must receive keyboard focus');
             tapAverageCardAt(0.2, 0.2);
-            assert(periodLabel.textContent === '15 days', 'tap near the card header must select 15 days');
+            assert(averageTitle.textContent === 'Average Daily Main Meter Units · 15 days', 'tap near the card header must select 15 days');
             tapAverageCardAt(0.8, 0.8);
-            assert(periodLabel.textContent === '30 days', 'tap near the card footer must select 30 days');
+            assert(averageTitle.textContent === 'Average Daily Main Meter Units · 30 days', 'tap near the card footer must select 30 days');
             periodButton.click();
-            assert(periodLabel.textContent === '7 days', 'button activation must wrap to 7 days');
-            return 'Whole-card taps cycle periods and expose an accessible button control';
+            assert(averageTitle.textContent === 'Average Daily Main Meter Units · 7 days', 'button activation must wrap to 7 days');
+            return 'Whole-card taps cycle periods, the title displays the selection, and the control remains keyboard reachable';
           });
           check('7-day selection prorates overlapping intervals and excludes uncovered days', () => {
             assert(appWindow.App.dashboardAverageDays === 7, '7 days must be the default');
             const average = chooseDays(7);
             assert(closeTo(average, 15), `expected 15.00 kWh/day, received ${average}`);
-            return `${averageValue.textContent}; ${appDocument.getElementById('metricAverageCoverage').textContent}`;
+            return averageValue.textContent;
           });
           check('15-day selection uses only the interval portion inside its window', () => {
             const average = chooseDays(15);
@@ -180,7 +196,7 @@
             chooseDays(7);
             appWindow.eval(`App.currentMeterType = 'solar'; App.refreshDashboardMetrics('factory-a');`);
             assert(closeTo(parseFloat(averageValue.textContent), 3.5), `expected solar average of 3.50, received ${averageValue.textContent}`);
-            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Solar Generation', 'solar label must say generation');
+            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Solar Generation · 7 days', 'solar label must include generation and the period');
             return 'Factory isolation and Solar Generation label verified';
           });
           check('meter chooser is hidden outside sub-meter context and card taps do not open it', () => {
@@ -222,15 +238,15 @@
           check('sub-meter average sums each meter’s observed daily rate', () => {
             appWindow.eval(`App.currentMeterType = 'submeters'; App.dashboardAverageMeterType = 'submeters'; App.dashboardAverageMeterContext = null; App.refreshDashboardMetrics('factory-a');`);
             assert(closeTo(parseFloat(averageValue.textContent), 10), `expected combined sub-meter average of 10, received ${averageValue.textContent}`);
-            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Sub-Meter Units', 'sub-meter label must be correct');
-            assert(appDocument.getElementById('metricAverageCoverage').textContent.includes('meter-days'), 'combined sub-meter coverage must be expressed in meter-days');
-            return `${averageValue.textContent}; ${appDocument.getElementById('metricAverageCoverage').textContent}`;
+            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Sub-Meter Units · 7 days', 'sub-meter label must include the period');
+            assert(!appDocument.getElementById('metricAverageCoverage'), 'sub-meter context must not restore average hint text');
+            return averageValue.textContent;
           });
           check('no covered reading interval is displayed as unavailable, not zero', () => {
             chooseDays(30);
             appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-empty');`);
             assert(averageValue.textContent === '—', `expected unavailable marker, received ${averageValue.textContent}`);
-            assert(appDocument.getElementById('metricAverageCoverage').textContent === 'No readings in the last 30 days', 'empty-window explanation must be shown');
+            assert(!appDocument.getElementById('metricAverageCoverage'), 'unavailable averages must not show hint text');
             appWindow.eval(`App.refreshDashboardMetrics('factory-missing');`);
             assert(averageValue.textContent === '—', 'a reading with missing kWh delta must not be counted as zero');
             return 'No interval coverage remains distinct from zero consumption';
@@ -499,16 +515,17 @@
               const units = appDocument.getElementById('cardMetricUnits').getBoundingClientRect();
               const average = appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect();
               assert(Math.abs(units.top - average.top) < 2 && units.left < average.left, `${mode} at ${width}px must place Units and Average side-by-side in the first row`);
+              assert(Math.abs(units.height - average.height) < 1, `${mode} at ${width}px must keep Units and Average cards the same compact height`);
               if (mode === 'main') {
                 const pf = appDocument.getElementById('cardMetricPf');
                 const md = appDocument.getElementById('cardMetricMd');
                 const pfRect = pf.getBoundingClientRect();
                 const mdRect = md.getBoundingClientRect();
                 assert(Math.abs(pfRect.top - mdRect.top) < 2 && pfRect.top > units.top && pfRect.left < mdRect.left, `Main at ${width}px must place PF and MD side-by-side in the next row`);
+                assert(Math.abs(pfRect.height - mdRect.height) < 1, `Main at ${width}px must keep PF and MD cards the same height`);
                 for (const id of ['cardMetricPf', 'cardMetricMd']) {
                   const compact = appDocument.getElementById(id);
                   assert(parseFloat(appWindow.getComputedStyle(compact).paddingTop) === 12, `${id} must use compact mobile padding`);
-                  assert(compact.getBoundingClientRect().height < average.height, `${id} must remain shorter than the Average card`);
                 }
                 for (const childId of ['lblMetricPfTitle', 'metricPf', 'metricPfBadge', 'lblMetricMdTitle', 'metricMd', 'metricMdBadge']) {
                   const child = appDocument.getElementById(childId);
