@@ -394,6 +394,11 @@
             appWindow.eval('App.initDayPicker = window.__dashboardOriginalInitDayPicker; App.initDayPicker();');
             assert(daySelect.value === String(new Date().getDate()) && dateInput.value === appWindow.__dashboardExpectedDate, 'refresh must return to the available preset for the selected date');
             assert(appWindow.getComputedStyle(dateInput).display === 'none', 'refresh must hide the native picker after clearing the custom selection');
+            daySelect.value = 'custom';
+            appWindow.App.handleDaySelectChange();
+            dateInput.value = appWindow.__dashboardExpectedDate;
+            dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            assert(appWindow.getComputedStyle(dateInput).display !== 'none', 'custom date must be visible before a sub-meter save');
             const pressEnter = input => {
               const event = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
               input.dispatchEvent(event);
@@ -410,6 +415,8 @@
             appWindow.__dashboardSubmittedSubReadings.push(
               appWindow.__dashboardStoredReadings.find(reading => reading.meterType === 'sub_one' && reading.date === appWindow.__dashboardExpectedDate)
             );
+            assert(appWindow.getComputedStyle(dateInput).display === 'none', 'successful sub-meter save must hide the native date picker');
+            assert(dateInput.value === appWindow.__dashboardExpectedDate && daySelect.value === 'custom', 'hiding the picker must preserve the shared custom date for other sub-meters');
             const beforeDuplicate = appWindow.__dashboardStoredReadings.length;
             appDocument.getElementById('inputKwh_sub_sub_one').value = '55';
             pressEnter(appDocument.getElementById('inputKwh_sub_sub_one'));
@@ -443,7 +450,7 @@
               reading.plantId === 'factory-a' && reading.meterType === meterType && reading.date === appWindow.__dashboardExpectedDate
             ).length;
             appWindow.eval(`
-              App.refreshSelectedFactoryView = () => {};
+              App.refreshSelectedFactoryView = () => App.initDayPicker();
               App.showSuccessModal = () => {};
               App.handleLiveFormCalculation = () => {};
             `);
@@ -463,12 +470,15 @@
             const mainEvent = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
             mainInput.dispatchEvent(mainEvent);
             assert(mainEvent.defaultPrevented && countFor('main') === beforeInvalid + 1, 'valid Main Enter must save once');
+            assert(appWindow.getComputedStyle(dateInput).display === 'none', 'successful Main save must continue to hide the native date picker');
+            dateInput.value = appWindow.__dashboardExpectedDate;
             mainInput.value = '120';
             mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
             assert(countFor('main') === beforeInvalid + 1, 'duplicate Main Enter must not save again');
             assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Main Enter must show the existing duplicate error');
 
             appWindow.eval(`App.currentMeterType = 'solar';`);
+            dateInput.value = appWindow.__dashboardExpectedDate;
             mainInput.value = '';
             const invalidSolarBefore = countFor('solar');
             mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -477,11 +487,34 @@
             mainInput.value = '100';
             mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
             assert(countFor('solar') === invalidSolarBefore + 1, 'valid Solar Enter must save once');
+            assert(appWindow.getComputedStyle(dateInput).display === 'none', 'successful Solar save must continue to hide the native date picker');
+            dateInput.value = appWindow.__dashboardExpectedDate;
             mainInput.value = '110';
             mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
             assert(countFor('solar') === invalidSolarBefore + 1, 'duplicate Solar Enter must not save again');
             assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Solar Enter must show the existing duplicate error');
             return 'Main and Solar Enter submissions save once; invalid and duplicate entries remain blocked';
+          });
+          check('Sub-Meter edit omits KVAh, KVARh, and MD while Solar behavior remains unchanged', () => {
+            appWindow.__dashboardStoredReadings.push(
+              { id: 'edit-main-regression', plantId: 'factory-a', meterType: 'main', date: appWindow.__dashboardExpectedDate, kwh: 100, kvah: 110, kvarh: 5, rawMd: 10 },
+              { id: 'edit-solar-regression', plantId: 'factory-a', meterType: 'solar', date: appWindow.__dashboardExpectedDate, kwh: 20, kvah: 20, kvarh: 0, rawMd: 0 },
+              { id: 'edit-sub-regression', plantId: 'factory-a', meterType: 'sub_one', date: appWindow.__dashboardExpectedDate, kwh: 30, kvah: 30, kvarh: 0, rawMd: 0 }
+            );
+            const fieldGroups = ['groupEditKvah', 'groupEditKvarh', 'groupEditMd'];
+            const areHidden = () => fieldGroups.every(id => appWindow.getComputedStyle(appDocument.getElementById(id)).display === 'none');
+            const areVisible = () => fieldGroups.every(id => appWindow.getComputedStyle(appDocument.getElementById(id)).display !== 'none');
+
+            appWindow.App.openEditModal('edit-sub-regression');
+            assert(areHidden(), 'Sub-Meter edit must hide KVAh, KVARh, and MD');
+            appWindow.App.closeEditModal();
+            appWindow.App.openEditModal('edit-solar-regression');
+            assert(areHidden(), 'Solar edit must continue to hide KVAh, KVARh, and MD');
+            appWindow.App.closeEditModal();
+            appWindow.App.openEditModal('edit-main-regression');
+            assert(areVisible(), 'Main Meter edit must continue to show KVAh, KVARh, and MD');
+            appWindow.App.closeEditModal();
+            return 'Sub-Meter and Solar edits omit irrelevant fields; Main Meter fields remain available';
           });
           check('dashboard cards stay compact and ordered without overflow in Main, Solar, and Sub-Meter modes', () => {
             const originalWidth = frame.style.width;

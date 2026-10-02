@@ -7847,6 +7847,8 @@
           this.showToast(`✅ "${subName}" saved! (+${result.record.deltaKwh.toLocaleString()} units)`);
           this.renderSubMetersEntryList(activePlant);
           this.refreshDashboardMetrics(activePlant.id);
+          const dateInput = document.getElementById('inputDate');
+          if (dateInput) dateInput.style.display = 'none';
         } else {
           const errText = result.errors ? Object.values(result.errors).join('\n') : (result.message || 'Invalid values.');
           alert(errText);
@@ -10297,6 +10299,8 @@
 
         const isSolar = (record.meterType === 'solar');
         const activePlant = ContractorManager.getActivePlant();
+        const isSubMeter = !!(activePlant && Array.isArray(activePlant.subMeters) &&
+          activePlant.subMeters.some(subMeter => subMeter.id === record.meterType));
         const mf = getMeterMf(activePlant, record.meterType || 'main');
 
         document.getElementById('editRecordId').value = record.id;
@@ -10316,8 +10320,8 @@
           lblEditMd.innerHTML = `MD (Meter Reading) ${mf > 1 ? `<span style="font-size:0.75rem; color:var(--primary); font-weight:700;">(MF: ×${mf})</span>` : ''}`;
         }
 
-        if (isSolar) {
-          if (lblKwh) lblKwh.textContent = 'Solar kWh';
+        if (isSolar || isSubMeter) {
+          if (lblKwh) lblKwh.textContent = isSolar ? 'Solar kWh' : 'Sub-Meter kWh';
           if (grpKvah) grpKvah.style.display = 'none';
           if (grpKvarh) grpKvarh.style.display = 'none';
           if (grpMd) grpMd.style.display = 'none';
