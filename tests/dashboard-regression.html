@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard browser regressions</title>
+  <style>
+    body { max-width: 760px; margin: 32px auto; padding: 0 16px; font: 16px/1.5 system-ui, sans-serif; color: #172033; }
+    h1 { font-size: 1.4rem; }
+    #results { padding-left: 24px; }
+    .pass { color: #15803d; }
+    .fail { color: #dc2626; }
+    #app-frame { position: absolute; left: -10000px; top: 0; width: 390px; height: 844px; border: 0; }
+  </style>
+</head>
+<body>
+  <h1>Dashboard browser regressions</h1>
+  <p id="status" role="status">Loading the app in a mobile-sized browser frame…</p>
+  <ol id="results"></ol>
+  <iframe id="app-frame" src="../index.html" title="Energy app under test"></iframe>
+  <script>
+    (() => {
+      const frame = document.getElementById('app-frame');
+      const results = document.getElementById('results');
+      const status = document.getElementById('status');
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      function addResult(name, passed, detail) {
+        const item = document.createElement('li');
+        item.className = passed ? 'pass' : 'fail';
+        item.textContent = `${passed ? 'PASS' : 'FAIL'}: ${name}${detail ? ` — ${detail}` : ''}`;
+        results.appendChild(item);
+      }
+
+      function check(name, callback) {
+        try {
+          const detail = callback();
+          addResult(name, true, detail);
+        } catch (error) {
+          addResult(name, false, error.message);
+        }
+      }
+
+      function dateDaysAgo(daysAgo) {
+        const date = new Date();
+        date.setHours(12, 0, 0, 0);
+        date.setDate(date.getDate() - daysAgo);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      }
+
+      function reading(plantId, meterType, daysAgo, daysElapsed, deltaKwh, calculatedPf = 0.92) {
+        return {
+          plantId,
+          meterType,
+          date: dateDaysAgo(daysAgo),
+          daysElapsed,
+          deltaKwh,
+          avgDailyKwh: deltaKwh / daysElapsed,
+          calculatedPf,
+          md: 12
+        };
+      }
+
+      frame.addEventListener('load', () => {
+        try {
+          const appWindow = frame.contentWindow;
+          const appDocument = frame.contentDocument;
+          const plant = {
+            id: 'factory-a',
+            contractDemand: 20,
+            subMeters: [{ id: 'sub_one', name: 'Mixer' }, { id: 'sub_two', name: 'Pump' }]
+          };
+          const fixtureReadings = [
+            reading('factory-a', 'main', 1, 3, 30),
+            reading('factory-a', 'main', 4, 4, 80),
+            reading('factory-a', 'main', 8, 4, 120),
+            reading('factory-a', 'main', 12, 8, 320),
+            reading('factory-a', 'main', 20, 10, 500),
+            reading('factory-b', 'main', 1, 1, 900),
+            reading('factory-a', 'solar', 1, 3, 6),
+            reading('factory-a', 'solar', 4, 4, 20),
+            reading('factory-a', 'sub_one', 1, 3, 12),
+            reading('factory-a', 'sub_one', 4, 4, 16),
+            reading('factory-a', 'sub_two', 1, 3, 18),
+            reading('factory-a', 'sub_two', 4, 4, 24),
+            reading('factory-empty', 'main', 45, 5, 100),
+            { plantId: 'factory-missing', meterType: 'main', date: dateDaysAgo(1), daysElapsed: 1 }
+          ];
+
+          appWindow.__dashboardTestPlant = plant;
+          appWindow.__dashboardTestReadings = fixtureReadings;
+          appWindow.eval(`
+            ContractorManager.getActivePlant = () => window.__dashboardTestPlant;
+            HistoryManager.getAllReadings = () => window.__dashboardTestReadings;
+            App.currentMeterType = 'main';
+            App.dashboardAverageDays = 7;
+            App.refreshDashboardMetrics('factory-a');
+          `);
+
+          const select = appDocument.getElementById('dashboardAverageDays');
+          const averageValue = appDocument.getElementById('metricAverageUnits');
+          function chooseDays(days) {
+            select.value = String(days);
+            select.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            return parseFloat(averageValue.textContent);
+          }
+          function closeTo(actual, expected) {
+            return Number.isFinite(actual) && Math.abs(actual - expected) < 0.01;
+          }
+
+          check('7-day selection prorates overlapping intervals and excludes uncovered days', () => {
+            assert(select.value === '7', '7 days must be the default');
+            const average = chooseDays(7);
+            assert(closeTo(average, 15), `expected 15.00 kWh/day, received ${average}`);
+            return `${averageValue.textContent}; ${appDocument.getElementById('metricAverageCoverage').textContent}`;
+          });
+          check('15-day selection uses only the interval portion inside its window', () => {
+            const average = chooseDays(15);
+            assert(closeTo(average, 25), `expected 25.00 kWh/day, received ${average}`);
+            return averageValue.textContent;
+          });
+          check('30-day selection uses stored interval kWh and elapsed days', () => {
+            const average = chooseDays(30);
+            assert(closeTo(average, 1050 / 29), `expected ${(1050 / 29).toFixed(2)} kWh/day, received ${average}`);
+            return averageValue.textContent;
+          });
+          check('average is scoped to the requested factory and meter', () => {
+            appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-b');`);
+            assert(closeTo(parseFloat(averageValue.textContent), 900), `expected factory-b average of 900, received ${averageValue.textContent}`);
+            chooseDays(7);
+            appWindow.eval(`App.currentMeterType = 'solar'; App.refreshDashboardMetrics('factory-a');`);
+            assert(closeTo(parseFloat(averageValue.textContent), 3.5), `expected solar average of 3.50, received ${averageValue.textContent}`);
+            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Solar Generation', 'solar label must say generation');
+            return 'Factory isolation and Solar Generation label verified';
+          });
+          check('sub-meter average sums each meter’s observed daily rate', () => {
+            appWindow.eval(`App.currentMeterType = 'submeters'; App.refreshDashboardMetrics('factory-a');`);
+            assert(closeTo(parseFloat(averageValue.textContent), 10), `expected combined sub-meter average of 10, received ${averageValue.textContent}`);
+            assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Sub-Meter Units', 'sub-meter label must be correct');
+            assert(appDocument.getElementById('metricAverageCoverage').textContent.includes('meter-days'), 'combined sub-meter coverage must be expressed in meter-days');
+            return `${averageValue.textContent}; ${appDocument.getElementById('metricAverageCoverage').textContent}`;
+          });
+          check('no covered reading interval is displayed as unavailable, not zero', () => {
+            chooseDays(30);
+            appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-empty');`);
+            assert(averageValue.textContent === '—', `expected unavailable marker, received ${averageValue.textContent}`);
+            assert(appDocument.getElementById('metricAverageCoverage').textContent === 'No readings in the last 30 days', 'empty-window explanation must be shown');
+            appWindow.eval(`App.refreshDashboardMetrics('factory-missing');`);
+            assert(averageValue.textContent === '—', 'a reading with missing kWh delta must not be counted as zero');
+            return 'No interval coverage remains distinct from zero consumption';
+          });
+          check('entry-form calculation preview remains intact', () => {
+            appWindow.eval(`App.currentMeterType = 'main'; App.updateLivePreview(12, 14, 0, 0.95, 4);`);
+            assert(appDocument.getElementById('liveCalcBox'), 'entry-form live calculation preview must remain present');
+            assert(appDocument.getElementById('previewUnits').textContent.includes('12'), 'entry-form unit preview must still render calculated units');
+            assert(appDocument.getElementById('previewPf').textContent === '0.950', 'entry-form PF preview must still render');
+            return 'Existing entry-form units and PF previews remain unchanged';
+          });
+          check('Power Factor follows all other dashboard metric cards on mobile', () => {
+            const grid = appDocument.querySelector('.metrics-grid');
+            const cards = Array.from(grid.children).filter(element => element.classList.contains('metric-card'));
+            assert(cards[cards.length - 1].id === 'cardMetricPf', 'Power Factor must be last in DOM/grid order');
+            assert(appWindow.matchMedia('(max-width: 640px)').matches, 'test frame must use the mobile breakpoint');
+            const pfGridColumn = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
+            assert(pfGridColumn.gridColumnStart === '1' && pfGridColumn.gridColumnEnd === '-1', 'Power Factor must span the final mobile row');
+            return 'Power Factor is last and spans the mobile grid';
+          });
+
+          status.textContent = 'Browser regression checks complete.';
+          status.className = results.querySelector('.fail') ? 'fail' : 'pass';
+          if (!results.querySelector('.fail')) status.textContent += ' All checks passed.';
+        } catch (error) {
+          status.textContent = `Browser regression setup failed: ${error.message}`;
+          status.className = 'fail';
+          addResult('Test setup', false, error.message);
+        }
+      }, { once: true });
+    })();
+  </script>
+</body>
+</html>

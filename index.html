@@ -140,6 +140,8 @@
     .metric-title { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
     .metric-value { font-size: 1.7rem; font-weight: 800; color: var(--text-main); line-height: 1.2; transition: color 0.25s ease; }
     .metric-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
+    .metric-period-select { max-width: 82px; padding: 5px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
+    .metric-average-coverage { display: block; margin-top: 6px; color: var(--text-muted); font-size: 0.72rem; }
 
     .pf-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.78rem; font-weight: 700; transition: all 0.2s ease; }
     .pf-badge.good { background: #dcfce7; color: #15803d; border: 1px solid rgba(22, 163, 74, 0.35); }
@@ -366,6 +368,7 @@
       #btnUserRole { padding: 4px 8px !important; gap: 4px !important; margin-left: 0 !important; }
       .metrics-grid { grid-template-columns: 1fr 1fr; }
       .metric-value { font-size: 1.3rem; }
+      .power-factor-dashboard-card { grid-column: 1 / -1; }
       .form-grid { grid-template-columns: 1fr; }
       .meter-type-bar { padding: 4px 10px !important; background: transparent !important; border-bottom: none !important; }
       .meter-type-container { flex-direction: row !important; align-items: center !important; gap: 6px !important; width: 100% !important; box-sizing: border-box; }
@@ -509,19 +512,6 @@
           </div>
         </div>
 
-        <div class="metric-card success" id="cardMetricPf">
-          <div class="metric-header">
-            <span class="metric-title" id="lblMetricPfTitle">Power Factor</span>
-            <span class="metric-icon">🎯</span>
-          </div>
-          <div class="metric-value">
-            <span id="metricPf">1.000</span>
-          </div>
-          <div style="margin-top:6px;">
-            <span id="metricPfBadge" class="pf-badge good">🟢 Excellent</span>
-          </div>
-        </div>
-
         <div class="metric-card warning" id="cardMetricMd">
           <div class="metric-header">
             <span class="metric-title" id="lblMetricMdTitle">Maximum Demand</span>
@@ -532,6 +522,35 @@
           </div>
           <div style="margin-top:6px;">
             <span id="metricMdBadge" class="pf-badge average">Demand</span>
+          </div>
+        </div>
+
+        <div class="metric-card" id="cardMetricAverageUnits">
+          <div class="metric-header">
+            <span class="metric-title" id="lblMetricAverageTitle">Average Daily Main Meter Units</span>
+            <label for="dashboardAverageDays" style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;">Average period</label>
+            <select id="dashboardAverageDays" class="metric-period-select" aria-label="Average period" onchange="App.setDashboardAverageDays(this.value)">
+              <option value="7" selected>7 days</option>
+              <option value="15">15 days</option>
+              <option value="30">30 days</option>
+            </select>
+          </div>
+          <div class="metric-value">
+            <span id="metricAverageUnits">—</span>
+          </div>
+          <span id="metricAverageCoverage" class="metric-average-coverage" title="Intervals crossing the window boundary are prorated by days elapsed. Only days covered by stored readings count toward the average.">No readings in the last 7 days</span>
+        </div>
+
+        <div class="metric-card success power-factor-dashboard-card" id="cardMetricPf">
+          <div class="metric-header">
+            <span class="metric-title" id="lblMetricPfTitle">Power Factor</span>
+            <span class="metric-icon">🎯</span>
+          </div>
+          <div class="metric-value">
+            <span id="metricPf">1.000</span>
+          </div>
+          <div style="margin-top:6px;">
+            <span id="metricPfBadge" class="pf-badge good">🟢 Excellent</span>
           </div>
         </div>
       </div>
@@ -5356,6 +5375,60 @@
         return sorted.filter(r => new Date(r.date).getTime() >= cutoffTime);
       },
 
+      getAverageDailyKwh(plantId, meterType, windowDays) {
+        const days = Number(windowDays);
+        if (!plantId || ![7, 15, 30].includes(days)) return { averageKwhPerDay: null, coveredDays: 0 };
+
+        const millisecondsPerDay = 24 * 60 * 60 * 1000;
+        const today = new Date();
+        const todayDay = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) / millisecondsPerDay;
+        const windowStartDay = todayDay - days + 1;
+        const readings = this.getReadingsForPlant(plantId, meterType, true);
+        let energyKwh = 0;
+        let coveredDays = 0;
+
+        const toUtcDay = dateString => {
+          const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString || '');
+          if (!match) return null;
+          const year = Number(match[1]);
+          const month = Number(match[2]) - 1;
+          const day = Number(match[3]);
+          const timestamp = Date.UTC(year, month, day);
+          const parsed = new Date(timestamp);
+          if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month || parsed.getUTCDate() !== day) return null;
+          return timestamp / millisecondsPerDay;
+        };
+
+        readings.forEach((reading, index) => {
+          const endpointDay = toUtcDay(reading.date);
+          if (endpointDay === null || endpointDay > todayDay) return;
+
+          let intervalDays = Number(reading.daysElapsed);
+          if ((!Number.isFinite(intervalDays) || intervalDays < 1) && readings[index + 1]) {
+            intervalDays = MeterCalc.getDaysElapsed(reading.date, readings[index + 1].date);
+          }
+          const deltaKwh = (reading.deltaKwh === null || reading.deltaKwh === undefined || reading.deltaKwh === '')
+            ? NaN
+            : Number(reading.deltaKwh);
+          if (!Number.isInteger(intervalDays) || intervalDays < 1 || !Number.isFinite(deltaKwh) || deltaKwh < 0) return;
+
+          // Clip each stored interval to the trailing calendar window; uncovered days do not count as zero use.
+          const intervalStartDay = endpointDay - intervalDays + 1;
+          const overlapStart = Math.max(intervalStartDay, windowStartDay);
+          const overlapEnd = Math.min(endpointDay, todayDay);
+          const overlapDays = Math.max(0, overlapEnd - overlapStart + 1);
+          if (!overlapDays) return;
+
+          energyKwh += (deltaKwh / intervalDays) * overlapDays;
+          coveredDays += overlapDays;
+        });
+
+        return {
+          averageKwhPerDay: coveredDays ? energyKwh / coveredDays : null,
+          coveredDays
+        };
+      },
+
       getPreviousReading(plantId, meterType = 'main', beforeDate = null) {
         // Query full historical dataset so baseline math is always exact
         const plantReadings = this.getReadingsForPlant(plantId, meterType, true);
@@ -7530,6 +7603,7 @@
       currentMeterType: 'main',
       analyticsMeterType: 'main',
       activeSubMeterHistoryId: null,
+      dashboardAverageDays: 7,
 
       clearDashboardDataView() {
         // Reset top header title & badges
@@ -7560,12 +7634,16 @@
         if (mPf) { mPf.textContent = '1.000'; mPf.style.color = ''; }
         const mMd = document.getElementById('metricMd');
         if (mMd) { mMd.textContent = '0 kW'; mMd.style.color = ''; }
+        const averageUnits = document.getElementById('metricAverageUnits');
+        if (averageUnits) averageUnits.textContent = '—';
+        const averageCoverage = document.getElementById('metricAverageCoverage');
+        if (averageCoverage) averageCoverage.textContent = `No readings in the last ${this.dashboardAverageDays} days`;
         const pfBadge = document.getElementById('metricPfBadge');
         if (pfBadge) { pfBadge.className = 'pf-badge good'; pfBadge.textContent = '🟢 Excellent'; }
         const mdBadge = document.getElementById('metricMdBadge');
         if (mdBadge) { mdBadge.className = 'pf-badge average'; mdBadge.textContent = 'Demand'; }
         const cardPf = document.getElementById('cardMetricPf');
-        if (cardPf) cardPf.className = 'metric-card success';
+        if (cardPf) cardPf.className = 'metric-card success power-factor-dashboard-card';
         const cardMd = document.getElementById('cardMetricMd');
         if (cardMd) cardMd.className = 'metric-card';
 
@@ -8465,18 +8543,47 @@
         if (kvarhHint) kvarhHint.textContent = kvarhText;
       },
 
+      setDashboardAverageDays(value) {
+        const days = Number(value);
+        if (![7, 15, 30].includes(days)) return;
+        this.dashboardAverageDays = days;
+        const activePlant = ContractorManager.getActivePlant();
+        this.refreshDashboardMetrics(activePlant ? activePlant.id : null);
+      },
+
       refreshDashboardMetrics(plantId) {
         const metricUnits = document.getElementById('metricUnits');
         const metricPf = document.getElementById('metricPf');
         const metricMd = document.getElementById('metricMd');
+        const metricAverageUnits = document.getElementById('metricAverageUnits');
+        const metricAverageCoverage = document.getElementById('metricAverageCoverage');
+        const averageDaysSelect = document.getElementById('dashboardAverageDays');
+        const windowDays = [7, 15, 30].includes(this.dashboardAverageDays) ? this.dashboardAverageDays : 7;
         const isSolar = (this.currentMeterType === 'solar');
         const isSubMeters = (this.currentMeterType === 'submeters' || (typeof this.currentMeterType === 'string' && this.currentMeterType.startsWith('sub_')));
         const activePlant = ContractorManager.getActivePlant();
 
         const lblUnits = document.getElementById('lblMetricUnitsTitle');
+        const lblAverage = document.getElementById('lblMetricAverageTitle');
         const cardPf = document.getElementById('cardMetricPf');
         const cardMd = document.getElementById('cardMetricMd');
         const cardUnits = document.getElementById('cardMetricUnits');
+        const averageMeterLabel = isSolar ? 'Solar Generation' : (isSubMeters ? 'Sub-Meter Units' : 'Main Meter Units');
+
+        if (lblAverage) lblAverage.textContent = `Average Daily ${averageMeterLabel}`;
+        if (averageDaysSelect) averageDaysSelect.value = String(windowDays);
+        const renderAverage = summary => {
+          if (!summary || !summary.coveredDays || summary.averageKwhPerDay === null) {
+            if (metricAverageUnits) metricAverageUnits.textContent = '—';
+            if (metricAverageCoverage) metricAverageCoverage.textContent = `No readings in the last ${windowDays} days`;
+            return;
+          }
+          if (metricAverageUnits) {
+            metricAverageUnits.textContent = `${summary.averageKwhPerDay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kWh/day`;
+          }
+          const coverageUnit = isSubMeters ? 'meter-days' : 'recorded days';
+          if (metricAverageCoverage) metricAverageCoverage.textContent = `Based on ${summary.coveredDays} ${coverageUnit} in the last ${windowDays} days`;
+        };
 
         if (cardUnits) {
           if (isSolar) cardUnits.classList.add('solar-card');
@@ -8498,10 +8605,11 @@
         }
 
         if (!plantId) {
+          renderAverage(null);
           if (metricUnits) metricUnits.textContent = '0 kWh';
           if (metricPf) { metricPf.textContent = '1.000'; metricPf.style.color = ''; }
           if (metricMd) { metricMd.textContent = '0 kW'; metricMd.style.color = ''; }
-          if (cardPf) cardPf.className = 'metric-card success';
+          if (cardPf) cardPf.className = 'metric-card success power-factor-dashboard-card';
           if (cardMd) cardMd.className = 'metric-card';
           const pfBadge = document.getElementById('metricPfBadge');
           if (pfBadge) { pfBadge.className = 'pf-badge good'; pfBadge.textContent = '🟢 Excellent'; }
@@ -8514,23 +8622,32 @@
 
         if (isSubMeters) {
           let totalSubKwh = 0;
+          let averageKwhPerDay = 0;
+          let coveredMeterDays = 0;
           if (plant && plant.subMeters) {
             plant.subMeters.forEach(s => {
               const r = HistoryManager.getReadingsForPlant(plantId, s.id);
               if (r.length > 0) totalSubKwh += (r[0].deltaKwh || 0);
+              const average = HistoryManager.getAverageDailyKwh(plantId, s.id, windowDays);
+              if (average.coveredDays > 0 && average.averageKwhPerDay !== null) {
+                averageKwhPerDay += average.averageKwhPerDay;
+                coveredMeterDays += average.coveredDays;
+              }
             });
           }
+          renderAverage(coveredMeterDays ? { averageKwhPerDay, coveredDays: coveredMeterDays } : null);
           if (metricUnits) metricUnits.textContent = formatEnergyValue(totalSubKwh, true);
           return;
         }
 
+        renderAverage(HistoryManager.getAverageDailyKwh(plantId, this.currentMeterType, windowDays));
         const readings = HistoryManager.getReadingsForPlant(plantId, this.currentMeterType);
 
         if (readings.length === 0) {
           if (metricUnits) metricUnits.textContent = '0 kWh';
           if (metricPf) { metricPf.textContent = '1.000'; metricPf.style.color = ''; }
           if (metricMd) { metricMd.textContent = '0 kW'; metricMd.style.color = ''; }
-          if (cardPf) cardPf.className = 'metric-card success';
+          if (cardPf) cardPf.className = 'metric-card success power-factor-dashboard-card';
           if (cardMd) cardMd.className = 'metric-card';
           const pfBadge = document.getElementById('metricPfBadge');
           if (pfBadge) { pfBadge.className = 'pf-badge good'; pfBadge.textContent = '🟢 Excellent'; }
@@ -8556,7 +8673,7 @@
         }
         if (cardPf) {
           const cardClass = pfStatus.badgeClass === 'poor' ? 'metric-card danger' : (pfStatus.badgeClass === 'average' ? 'metric-card warning' : 'metric-card success');
-          cardPf.className = cardClass;
+          cardPf.className = `${cardClass} power-factor-dashboard-card`;
         }
 
         // Dynamic MD Styling & Card update
