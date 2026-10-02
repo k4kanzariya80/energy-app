@@ -467,51 +467,82 @@
             assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Solar Enter must show the existing duplicate error');
             return 'Main and Solar Enter submissions save once; invalid and duplicate entries remain blocked';
           });
-          check('dashboard metric order and compact PF/MD cards work on mobile and desktop', () => {
-            appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-a');`);
-            const grid = appDocument.querySelector('.metrics-grid');
-            assert(appWindow.matchMedia('(max-width: 640px)').matches, 'test frame must use the mobile breakpoint');
-            const units = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
-            const average = appWindow.getComputedStyle(appDocument.getElementById('cardMetricAverageUnits'));
-            const pf = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
-            const md = appWindow.getComputedStyle(appDocument.getElementById('cardMetricMd'));
-            assert(units.gridColumnStart === '1' && units.gridRowStart === '1', 'Today’s Units must be top-left');
-            assert(pf.gridColumnStart === '2' && pf.gridRowStart === '1', 'Power Factor must be top-right after swapping slots with Average Daily Units');
-            assert(average.gridColumnStart === '1' && average.gridRowStart === '2', 'Average Daily Units must be bottom-left after swapping slots with Power Factor');
-            assert(md.gridColumnStart === '2' && md.gridRowStart === '2', 'Maximum Demand must be bottom-right');
-            for (const id of ['cardMetricPf', 'cardMetricMd']) {
-              const compact = appDocument.getElementById(id);
-              const compactStyle = appWindow.getComputedStyle(compact);
-              const fullStyle = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
-              assert(parseFloat(compactStyle.paddingTop) < parseFloat(fullStyle.paddingTop), `${id} must use less padding than the main readings card`);
-              assert(compactStyle.alignSelf === 'start', `${id} must not stretch to the taller card in its grid row`);
-              for (const childId of id === 'cardMetricPf'
-                ? ['lblMetricPfTitle', 'metricPf', 'metricPfBadge']
-                : ['lblMetricMdTitle', 'metricMd', 'metricMdBadge']) {
-                const child = appDocument.getElementById(childId);
-                assert(child.getClientRects().length > 0 && appWindow.getComputedStyle(child).visibility !== 'hidden', `${childId} must remain visible`);
+          check('dashboard cards stay compact and ordered without overflow in Main, Solar, and Sub-Meter modes', () => {
+            const originalWidth = frame.style.width;
+            const cardIds = ['cardMetricUnits', 'cardMetricMd', 'cardMetricPf', 'cardMetricAverageUnits'];
+            const idForMode = {
+              main: 'main',
+              solar: 'solar',
+              'sub-meter': 'submeters'
+            };
+            function setMode(mode) {
+              const meterType = idForMode[mode];
+              appWindow.eval(`App.currentMeterType = '${meterType}'; App.dashboardAverageMeterType = '${meterType}'; App.dashboardAverageMeterContext = null; App.refreshDashboardMetrics('factory-a');`);
+            }
+            function checkNoHorizontalOverflow(mode, width) {
+              const grid = appDocument.querySelector('.metrics-grid');
+              assert(appDocument.documentElement.scrollWidth <= appWindow.innerWidth, `${mode} at ${width}px must not overflow the viewport`);
+              assert(grid.scrollWidth <= grid.clientWidth, `${mode} at ${width}px must not overflow the metric grid`);
+              const gridRect = grid.getBoundingClientRect();
+              const visibleRects = cardIds
+                .map(id => appDocument.getElementById(id))
+                .filter(card => appWindow.getComputedStyle(card).display !== 'none')
+                .map(card => card.getBoundingClientRect());
+              assert(visibleRects.every(rect => rect.left >= gridRect.left && rect.right <= gridRect.right + 1), `${mode} at ${width}px must keep cards inside the grid`);
+              return visibleRects;
+            }
+            function verifyMobile(mode, width) {
+              frame.style.width = `${width}px`;
+              assert(appWindow.matchMedia('(max-width: 640px)').matches, `${width}px frame must use the mobile breakpoint`);
+              setMode(mode);
+              const rects = checkNoHorizontalOverflow(mode, width);
+              const units = appDocument.getElementById('cardMetricUnits').getBoundingClientRect();
+              const average = appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect();
+              assert(Math.abs(units.top - average.top) < 2 && units.left < average.left, `${mode} at ${width}px must place Units and Average side-by-side in the first row`);
+              if (mode === 'main') {
+                const pf = appDocument.getElementById('cardMetricPf');
+                const md = appDocument.getElementById('cardMetricMd');
+                const pfRect = pf.getBoundingClientRect();
+                const mdRect = md.getBoundingClientRect();
+                assert(Math.abs(pfRect.top - mdRect.top) < 2 && pfRect.top > units.top && pfRect.left < mdRect.left, `Main at ${width}px must place PF and MD side-by-side in the next row`);
+                for (const id of ['cardMetricPf', 'cardMetricMd']) {
+                  const compact = appDocument.getElementById(id);
+                  assert(parseFloat(appWindow.getComputedStyle(compact).paddingTop) === 12, `${id} must use compact mobile padding`);
+                  assert(compact.getBoundingClientRect().height < average.height, `${id} must remain shorter than the Average card`);
+                }
+                for (const childId of ['lblMetricPfTitle', 'metricPf', 'metricPfBadge', 'lblMetricMdTitle', 'metricMd', 'metricMdBadge']) {
+                  const child = appDocument.getElementById(childId);
+                  assert(child.getClientRects().length > 0 && appWindow.getComputedStyle(child).visibility !== 'hidden', `${childId} must remain visible`);
+                }
+              } else {
+                assert(rects.length === 2, `${mode} must show only Units and Average cards`);
+                assert(appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf')).display === 'none', `${mode} must hide Power Factor`);
+                assert(appWindow.getComputedStyle(appDocument.getElementById('cardMetricMd')).display === 'none', `${mode} must hide Maximum Demand`);
               }
             }
-            assert(appDocument.getElementById('cardMetricPf').getBoundingClientRect().height < appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height, 'Power Factor must remain compact instead of stretching to the Average card height');
-            assert(appDocument.getElementById('cardMetricMd').getBoundingClientRect().height < appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height, 'Maximum Demand must remain compact instead of stretching to the Average card height');
-            const originalWidth = frame.style.width;
+            for (const width of [390, 320]) {
+              for (const mode of ['main', 'solar', 'sub-meter']) verifyMobile(mode, width);
+            }
+
             frame.style.width = '1024px';
-            const desktopColumns = appWindow.getComputedStyle(grid).gridTemplateColumns.split(' ').length;
-            const desktopPositions = ['cardMetricUnits', 'cardMetricMd', 'cardMetricPf', 'cardMetricAverageUnits']
-              .map(id => appDocument.getElementById(id).getBoundingClientRect().left);
-            const desktopAverageHeight = appDocument.getElementById('cardMetricAverageUnits').getBoundingClientRect().height;
-            for (const id of ['cardMetricPf', 'cardMetricMd']) {
-              const compact = appDocument.getElementById(id);
-              const compactStyle = appWindow.getComputedStyle(compact);
-              const fullStyle = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
-              assert(parseFloat(compactStyle.paddingTop) < parseFloat(fullStyle.paddingTop), `${id} must stay compact on desktop`);
-              assert(compactStyle.alignSelf === 'start', `${id} must not stretch on desktop`);
-              assert(compact.getBoundingClientRect().height < desktopAverageHeight, `${id} must remain shorter than Average Daily Units on desktop`);
+            assert(!appWindow.matchMedia('(max-width: 640px)').matches, '1024px frame must use the desktop layout');
+            const grid = appDocument.querySelector('.metrics-grid');
+            for (const mode of ['main', 'solar', 'sub-meter']) {
+              setMode(mode);
+              const rects = checkNoHorizontalOverflow(mode, 1024);
+              assert(rects.every(rect => Math.abs(rect.top - rects[0].top) < 2), `${mode} desktop cards must share one row`);
+              assert(rects.every((rect, index) => index === 0 || rect.left > rects[index - 1].left), `${mode} desktop cards must remain in source order`);
+              if (mode === 'main') {
+                assert(appWindow.getComputedStyle(grid).gridTemplateColumns.split(' ').length >= 4, 'Main desktop metric grid must retain four columns');
+                const positions = ['cardMetricUnits', 'cardMetricMd', 'cardMetricPf', 'cardMetricAverageUnits']
+                  .map(id => appDocument.getElementById(id).getBoundingClientRect().left);
+                assert(positions.every((left, index) => index === 0 || left > positions[index - 1]), 'Main desktop order must remain Units, Maximum Demand, Power Factor, then Average');
+              } else {
+                assert(rects.length === 2, `${mode} desktop must show only Units and Average cards`);
+              }
             }
             frame.style.width = originalWidth;
-            assert(desktopColumns >= 4, 'desktop metric grid must retain its multi-column layout');
-            assert(desktopPositions.every((left, index) => index === 0 || left > desktopPositions[index - 1]), 'desktop order must place Units, Maximum Demand, Power Factor, then Average Daily Units');
-            return 'Mobile positions swap Average/PF; compact values and badges stay visible, while desktop remains four-column and ordered';
+            return 'Main, Solar, and Sub-Meter cards are compact and ordered at 320px, 390px, and 1024px without horizontal overflow';
           });
 
           status.textContent = 'Browser regression checks complete.';
