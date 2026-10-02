@@ -522,16 +522,6 @@
           </div>
         </div>
 
-        <div class="metric-card" id="cardMetricCost">
-          <div class="metric-header">
-            <span class="metric-title" id="lblMetricCostTitle">Estimated Cost</span>
-            <span class="metric-icon">💰</span>
-          </div>
-          <div class="metric-value">
-            <span id="metricCost">₹0</span>
-          </div>
-        </div>
-
         <div class="metric-card warning" id="cardMetricMd">
           <div class="metric-header">
             <span class="metric-title" id="lblMetricMdTitle">Maximum Demand</span>
@@ -675,10 +665,6 @@
                 <div class="calc-item" id="previewMdContainer">
                   <span class="calc-label">Demand (MD)</span>
                   <span id="previewMd" class="calc-val">-</span>
-                </div>
-                <div class="calc-item">
-                  <span class="calc-label" id="lblPreviewCost">Estimated Cost</span>
-                  <span id="previewCost" class="calc-val">₹0</span>
                 </div>
               </div>
             </div>
@@ -1016,10 +1002,6 @@
           <div class="form-group">
             <label for="newContractDemand">Contract Demand (kW)</label>
             <input type="number" step="any" id="newContractDemand" class="form-control" value="50">
-          </div>
-          <div class="form-group">
-            <label for="newTariffRate">Tariff Rate (₹/kWh)</label>
-            <input type="number" step="0.01" id="newTariffRate" class="form-control" value="7.50">
           </div>
           <div class="form-group" style="grid-column:1/-1; display:flex; align-items:center; gap:8px;">
             <input type="checkbox" id="newHasSolar" style="width:18px; height:18px; accent-color:var(--solar-hover);">
@@ -1435,11 +1417,6 @@
                 <label for="settingContractDemand">Contract Demand (kW / kVA)</label>
                 <input type="number" step="any" id="settingContractDemand" class="form-control" disabled>
               </div>
-              <div class="form-group">
-                <label for="settingTariffRate">Tariff Rate (₹/kWh)</label>
-                <input type="number" step="0.01" id="settingTariffRate" class="form-control" disabled>
-              </div>
-
               <!-- SOLAR CONFIGURATION -->
               <div style="grid-column: 1 / -1; background: var(--solar-light); border: 1px solid rgba(234, 179, 8, 0.4); padding: 14px; border-radius: var(--radius-md); margin-top: 6px;">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
@@ -1854,10 +1831,6 @@
                 <label for="regContractDemand">Contract Demand (kW):</label>
                 <input type="number" step="any" id="regContractDemand" class="form-control" value="50">
               </div>
-              <div class="form-group">
-                <label for="regTariffRate">Tariff Rate (₹/kWh):</label>
-                <input type="number" step="0.01" id="regTariffRate" class="form-control" value="7.50">
-              </div>
             </div>
             <div class="form-group" style="margin-bottom:10px;">
               <label for="regAdminName">Admin Full Name:</label>
@@ -2191,10 +2164,6 @@
         <div style="display:flex; justify-content:space-between;" id="successMdRow">
           <span style="color:var(--text-muted);">Maximum Demand:</span>
           <strong id="successMd">-</strong>
-        </div>
-        <div style="display:flex; justify-content:space-between;">
-          <span style="color:var(--text-muted);" id="lblSuccessCost">Estimated Amount:</span>
-          <strong id="successCost">-</strong>
         </div>
       </div>
 
@@ -3386,7 +3355,6 @@
           discom: plantData.discom || 'PGVCL',
           mf: parseFloat(plantData.mf) || 1,
           contractDemand: parseFloat(plantData.contractDemand) || 0,
-          tariffRate: parseFloat(plantData.tariffRate) || 7.50,
           hasSolar: !!plantData.hasSolar,
           solarCapacity: parseFloat(plantData.solarCapacity) || 0,
           solarMf: parseFloat(plantData.solarMf) || 1,
@@ -3412,7 +3380,6 @@
             adminName: updatedData.adminName ? updatedData.adminName.trim() : plants[index].adminName,
             mf: parseFloat(updatedData.mf) || plants[index].mf,
             contractDemand: parseFloat(updatedData.contractDemand) || plants[index].contractDemand,
-            tariffRate: parseFloat(updatedData.tariffRate) || plants[index].tariffRate,
             hasSolar: typeof updatedData.hasSolar === 'boolean' ? updatedData.hasSolar : plants[index].hasSolar,
             solarCapacity: parseFloat(updatedData.solarCapacity) || plants[index].solarCapacity,
             solarMf: parseFloat(updatedData.solarMf) || plants[index].solarMf,
@@ -4024,7 +3991,6 @@
         const discom = data.discom || 'PGVCL';
         const mf = parseFloat(data.mf) || 1;
         const contractDemand = parseFloat(data.contractDemand) || 50;
-        const tariffRate = parseFloat(data.tariffRate) || 7.50;
         const adminName = (data.adminName || 'Admin').trim();
         const adminEmail = (data.adminEmail || '').trim().toLowerCase();
         const adminPass = normalizePin(data.adminPassword);
@@ -4049,7 +4015,6 @@
           discom: discom,
           mf: mf,
           contractDemand: contractDemand,
-          tariffRate: tariffRate,
           adminEmail: cleanAdminEmail,
           adminName: adminName,
           adminPin: adminPass,
@@ -6708,7 +6673,6 @@
           "kVArh",
           "Maximum Demand (MD)",
           "Power Factor (PF)",
-          "Estimated Cost (₹)",
           "Audit Name",
           "Recorded At"
         ];
@@ -6719,8 +6683,6 @@
           const consumerNo = plant.consumerNo || '-';
           const discom = plant.discom || '-';
           const mf = getMeterMf(plant, r.meterType);
-          const tariffRate = plant.tariffRate || 7.5;
-          const cost = Math.round((r.deltaKwh || 0) * tariffRate);
           const formattedDate = formatDisplayDate(r.date);
           const rawName = (r.lastModifiedBy || r.enteredBy || 'Staff');
           const cleanAuditName = formatAuditName(rawName);
@@ -6740,7 +6702,6 @@
             r.kvarh || 0,
             r.md || 0,
             pfStr,
-            cost,
             cleanAuditName,
             formatRecordedAtDisplay(r.createdAt || r.date)
           ];
@@ -6795,7 +6756,7 @@
           const mainHeaders = [
             "Date", "Factory Name", "Meter Name", "Consumer No", "Discom", "MF",
             "Cumulative kWh", "Daily Units (kWh)", "Cumulative kVAh", "Daily kVAh",
-            "kVArh", "Maximum Demand (MD)", "Power Factor (PF)", "Estimated Cost (₹)",
+            "kVArh", "Maximum Demand (MD)", "Power Factor (PF)",
             "Recorded By", "Recorded At"
           ];
           const mainRows = mainReadings.map(r => [
@@ -6812,7 +6773,6 @@
             r.kvarh || 0,
             r.md || 0,
             r.calculatedPf ? r.calculatedPf.toFixed(3) : '1.000',
-            Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5)),
             formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff'),
             formatRecordedAtDisplay(r.createdAt || r.date)
           ]);
@@ -6834,7 +6794,7 @@
         if (solarReadings.length > 0) {
           const solarHeaders = [
             "Date", "Factory Name", "Meter Name", "Solar MF",
-            "Solar Cumulative (kWh)", "Units Generated (Δ kWh)", "Estimated Savings (₹)",
+            "Solar Cumulative (kWh)", "Units Generated (Δ kWh)",
             "Recorded By", "Recorded At"
           ];
           const solarRows = solarReadings.map(r => [
@@ -6844,7 +6804,6 @@
             getMeterMf(plant, 'solar'),
             r.kwh,
             r.deltaKwh,
-            Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5)),
             formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff'),
             formatRecordedAtDisplay(r.createdAt || r.date)
           ]);
@@ -6869,7 +6828,7 @@
             if (subReadings.length > 0) {
               const subHeaders = [
                 "Date", "Factory Name", "Sub-Meter Name", "Sub MF",
-                "Cumulative kWh", "Units Consumed (Δ kWh)", "Estimated Cost (₹)",
+                "Cumulative kWh", "Units Consumed (Δ kWh)",
                 "Recorded By", "Recorded At"
               ];
               const subRows = subReadings.map(r => [
@@ -6879,7 +6838,6 @@
                 sub.mf || 1,
                 r.kwh,
                 r.deltaKwh,
-                Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5)),
                 formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff'),
                 formatRecordedAtDisplay(r.createdAt || r.date)
               ]);
@@ -6942,18 +6900,17 @@
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8.5);
         doc.setTextColor(100, 116, 139);
-        const metaStr = `Consumer No: ${plant.consumerNo || '-'}   |   Discom: ${plant.discom || '-'}   |   Contract Demand: ${plant.contractDemand || 0} kW   |   Tariff: ₹${plant.tariffRate || 7.5}/unit   |   Date Range: ${data.dateRangeLabel.replace(/_/g, ' ')}`;
+        const metaStr = `Consumer No: ${plant.consumerNo || '-'}   |   Discom: ${plant.discom || '-'}   |   Contract Demand: ${plant.contractDemand || 0} kW   |   Date Range: ${data.dateRangeLabel.replace(/_/g, ' ')}`;
         doc.text(metaStr, 14, 19);
 
         // Stats Summary Box
         const totalKwh = allReadings.reduce((sum, r) => sum + (parseFloat(r.deltaKwh) || 0), 0);
-        const totalCost = allReadings.reduce((sum, r) => sum + (Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5))), 0);
         const avgPf = mainReadings.length > 0 ? (mainReadings.reduce((sum, r) => sum + (parseFloat(r.calculatedPf) || 1), 0) / mainReadings.length).toFixed(3) : '1.000';
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(15, 23, 42);
-        const summaryStr = `Total Records: ${allReadings.length}   |   Total Units: ${totalKwh.toLocaleString()} kWh   |   Est. Energy Cost: ₹${totalCost.toLocaleString()}   |   Avg Main PF: ${avgPf}`;
+        const summaryStr = `Total Records: ${allReadings.length}   |   Total Units: ${totalKwh.toLocaleString()} kWh   |   Avg Main PF: ${avgPf}`;
         doc.text(summaryStr, 14, 25);
 
         let currentY = 28;
@@ -6961,11 +6918,10 @@
         // 1. Main Meter Section
         if (mainReadings.length > 0) {
           const mainPdfHeaders = [
-            'Date', 'Meter', 'MF', 'Cumulative kWh', 'Daily kWh', 'kVAh', 'MD (kW)', 'PF', 'Est. Cost (₹)', 'Recorded By'
+            'Date', 'Meter', 'MF', 'Cumulative kWh', 'Daily kWh', 'kVAh', 'MD (kW)', 'PF', 'Recorded By'
           ];
           const mainPdfRows = mainReadings.map(r => {
             const mf = getMeterMf(plant, 'main');
-            const cost = Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5));
             return [
               formatDisplayDate(r.date),
               '⚡ Main Meter',
@@ -6975,7 +6931,6 @@
               Number(r.kvah || r.kwh || 0).toLocaleString(),
               Number(r.md || 0).toFixed(2),
               r.calculatedPf ? r.calculatedPf.toFixed(3) : '1.000',
-              `₹${cost.toLocaleString()}`,
               formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff')
             ];
           });
@@ -7013,19 +6968,15 @@
           doc.text(`☀️ Solar Generation Report (${solarReadings.length} records)`, 14, currentY);
           currentY += 4;
 
-          const solarPdfHeaders = ['Date', 'Meter', 'Solar MF', 'Cumulative Solar kWh', 'Units Generated (Δ kWh)', 'Estimated Savings (₹)', 'Recorded By'];
-          const solarPdfRows = solarReadings.map(r => {
-            const savings = Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5));
-            return [
+          const solarPdfHeaders = ['Date', 'Meter', 'Solar MF', 'Cumulative Solar kWh', 'Units Generated (Δ kWh)', 'Recorded By'];
+          const solarPdfRows = solarReadings.map(r => [
               formatDisplayDate(r.date),
               '☀️ Solar Meter',
               getMeterMf(plant, 'solar'),
               Number(r.kwh || 0).toLocaleString(),
               Number(r.deltaKwh || 0).toLocaleString(),
-              `₹${savings.toLocaleString()}`,
               formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff')
-            ];
-          });
+            ]);
 
           doc.autoTable({
             head: [solarPdfHeaders],
@@ -7052,14 +7003,13 @@
               doc.text(`🔌 Sub-Meter: ${sub.name} (${subReadings.length} records)`, 14, currentY);
               currentY += 4;
 
-              const subPdfHeaders = ['Date', 'Sub-Meter Name', 'MF', 'Cumulative kWh', 'Units Consumed (Δ kWh)', 'Estimated Cost (₹)', 'Recorded By'];
+              const subPdfHeaders = ['Date', 'Sub-Meter Name', 'MF', 'Cumulative kWh', 'Units Consumed (Δ kWh)', 'Recorded By'];
               const subPdfRows = subReadings.map(r => [
                 formatDisplayDate(r.date),
                 sub.name,
                 sub.mf || 1,
                 Number(r.kwh || 0).toLocaleString(),
                 Number(r.deltaKwh || 0).toLocaleString(),
-                `₹${Math.round((r.deltaKwh || 0) * (plant.tariffRate || 7.5)).toLocaleString()}`,
                 formatAuditName(r.lastModifiedBy || r.enteredBy || 'Staff')
               ]);
 
@@ -7106,8 +7056,6 @@
           const consumerNo = plant.consumerNo || '-';
           const discom = plant.discom || '-';
           const mf = getMeterMf(plant, r.meterType);
-          const tariffRate = plant.tariffRate || 7.5;
-          const cost = Math.round((r.deltaKwh || 0) * tariffRate);
           const formattedDate = formatDisplayDate(r.date);
           const rawName = (r.lastModifiedBy || r.enteredBy || 'Staff');
           const cleanAuditName = formatAuditName(rawName);
@@ -7127,7 +7075,6 @@
             r.kvarh || 0,
             r.md || 0,
             pfStr,
-            cost,
             cleanAuditName,
             formatRecordedAtDisplay(r.createdAt || r.date)
           ];
@@ -7607,17 +7554,10 @@
         if (activePf) activePf.textContent = '-';
         const activeMd = document.getElementById('cardActiveMd');
         if (activeMd) activeMd.textContent = '-';
-        const todayCost = document.getElementById('cardTodayCost');
-        if (todayCost) todayCost.textContent = '₹-';
-        const monthCost = document.getElementById('cardMonthCost');
-        if (monthCost) monthCost.textContent = '₹-';
-
         const mUnits = document.getElementById('metricUnits');
         if (mUnits) mUnits.textContent = '0';
         const mPf = document.getElementById('metricPf');
         if (mPf) { mPf.textContent = '1.000'; mPf.style.color = ''; }
-        const mCost = document.getElementById('metricCost');
-        if (mCost) mCost.textContent = '₹0';
         const mMd = document.getElementById('metricMd');
         if (mMd) { mMd.textContent = '0 kW'; mMd.style.color = ''; }
         const pfBadge = document.getElementById('metricPfBadge');
@@ -8528,15 +8468,12 @@
       refreshDashboardMetrics(plantId) {
         const metricUnits = document.getElementById('metricUnits');
         const metricPf = document.getElementById('metricPf');
-        const metricCost = document.getElementById('metricCost');
         const metricMd = document.getElementById('metricMd');
         const isSolar = (this.currentMeterType === 'solar');
         const isSubMeters = (this.currentMeterType === 'submeters' || (typeof this.currentMeterType === 'string' && this.currentMeterType.startsWith('sub_')));
         const activePlant = ContractorManager.getActivePlant();
-        const meterName = getMeterName(activePlant, this.currentMeterType);
 
         const lblUnits = document.getElementById('lblMetricUnitsTitle');
-        const lblCost = document.getElementById('lblMetricCostTitle');
         const cardPf = document.getElementById('cardMetricPf');
         const cardMd = document.getElementById('cardMetricMd');
         const cardUnits = document.getElementById('cardMetricUnits');
@@ -8548,17 +8485,14 @@
 
         if (isSolar) {
           if (lblUnits) lblUnits.textContent = "Solar Generation";
-          if (lblCost) lblCost.textContent = "Solar Savings";
           if (cardPf) cardPf.style.display = 'none';
           if (cardMd) cardMd.style.display = 'none';
         } else if (isSubMeters) {
           if (lblUnits) lblUnits.textContent = `Sub-Meters Units`;
-          if (lblCost) lblCost.textContent = "Estimated Cost";
           if (cardPf) cardPf.style.display = 'none';
           if (cardMd) cardMd.style.display = 'none';
         } else {
           if (lblUnits) lblUnits.textContent = "Today's Units";
-          if (lblCost) lblCost.textContent = "Estimated Cost";
           if (cardPf) cardPf.style.display = 'block';
           if (cardMd) cardMd.style.display = 'block';
         }
@@ -8566,7 +8500,6 @@
         if (!plantId) {
           if (metricUnits) metricUnits.textContent = '0 kWh';
           if (metricPf) { metricPf.textContent = '1.000'; metricPf.style.color = ''; }
-          if (metricCost) metricCost.textContent = '₹0';
           if (metricMd) { metricMd.textContent = '0 kW'; metricMd.style.color = ''; }
           if (cardPf) cardPf.className = 'metric-card success';
           if (cardMd) cardMd.className = 'metric-card';
@@ -8578,7 +8511,6 @@
         }
 
         const plant = ContractorManager.getActivePlant();
-        const tariffRate = plant ? plant.tariffRate : 7.50;
 
         if (isSubMeters) {
           let totalSubKwh = 0;
@@ -8589,7 +8521,6 @@
             });
           }
           if (metricUnits) metricUnits.textContent = formatEnergyValue(totalSubKwh, true);
-          if (metricCost) metricCost.textContent = `₹${Math.round(totalSubKwh * tariffRate).toLocaleString()}`;
           return;
         }
 
@@ -8598,7 +8529,6 @@
         if (readings.length === 0) {
           if (metricUnits) metricUnits.textContent = '0 kWh';
           if (metricPf) { metricPf.textContent = '1.000'; metricPf.style.color = ''; }
-          if (metricCost) metricCost.textContent = '₹0';
           if (metricMd) { metricMd.textContent = '0 kW'; metricMd.style.color = ''; }
           if (cardPf) cardPf.className = 'metric-card success';
           if (cardMd) cardMd.className = 'metric-card';
@@ -8611,7 +8541,6 @@
 
         const latest = readings[0];
         if (metricUnits) metricUnits.textContent = formatEnergyValue(latest.deltaKwh, true);
-        if (metricCost) metricCost.textContent = `₹${Math.round(latest.deltaKwh * tariffRate).toLocaleString()}`;
 
         // Dynamic PF Styling & Card update
         const pfVal = (typeof latest.calculatedPf === 'number') ? latest.calculatedPf : 1.0;
@@ -8663,7 +8592,7 @@
         const mf = getMeterMf(activePlant, this.currentMeterType);
 
         if (!kwhVal) {
-          this.updateLivePreview(0, 0, 0, 1.0, 0, 0);
+          this.updateLivePreview(0, 0, 0, 1.0, 0);
           return;
         }
 
@@ -8688,7 +8617,6 @@
             validation.diffs.deltaKvah,
             validation.diffs.deltaKvarh,
             validation.diffs.calculatedPf,
-            activePlant.tariffRate,
             validation.diffs.md
           );
         } else {
@@ -8700,23 +8628,20 @@
         }
       },
 
-      updateLivePreview(deltaKwh, deltaKvah, deltaKvarh, pf, tariffRate, md = 0) {
+      updateLivePreview(deltaKwh, deltaKvah, deltaKvarh, pf, md = 0) {
         const prevUnits = document.getElementById('previewUnits');
         const prevKvah = document.getElementById('previewKvah');
         const prevPf = document.getElementById('previewPf');
         const prevMd = document.getElementById('previewMd');
         const prevMdContainer = document.getElementById('previewMdContainer');
         const prevPfContainer = document.getElementById('previewPfContainer');
-        const prevCost = document.getElementById('previewCost');
         const isSolar = (this.currentMeterType === 'solar');
         const activePlant = ContractorManager.getActivePlant();
         const cd = activePlant ? (activePlant.contractDemand || 0) : 0;
 
         const lblUnits = document.getElementById('lblPreviewUnits');
-        const lblCost = document.getElementById('lblPreviewCost');
 
         if (lblUnits) lblUnits.textContent = isSolar ? "Solar Units" : "Today's Units";
-        if (lblCost) lblCost.textContent = isSolar ? "Solar Savings" : "Estimated Cost";
 
         if (prevUnits) prevUnits.textContent = `+${formatEnergyValue(deltaKwh, true)}`;
         if (prevKvah) prevKvah.textContent = `+${formatEnergyValue(deltaKvah, true, 'kVAh', 'MVAh')}`;
@@ -8745,8 +8670,6 @@
             }
           }
         }
-
-        if (prevCost) prevCost.textContent = `₹${Math.round(deltaKwh * (tariffRate || 7.5)).toLocaleString()}`;
       },
 
       generateWhatsAppDailyReport(plantId, dateStr) {
@@ -10410,7 +10333,6 @@
           discom: document.getElementById('newDiscom').value,
           mf: parseFloat(document.getElementById('newMf').value) || 1,
           contractDemand: parseFloat(document.getElementById('newContractDemand').value) || 0,
-          tariffRate: parseFloat(document.getElementById('newTariffRate').value) || 7.50,
           hasSolar: document.getElementById('newHasSolar').checked
         });
 
@@ -10882,7 +10804,6 @@
           'settingDiscom',
           'settingMf',
           'settingContractDemand',
-          'settingTariffRate',
           'settingHasSolar',
           'settingSolarCapacity',
           'settingSolarMf',
@@ -10936,7 +10857,6 @@
         const discomInput = document.getElementById('settingDiscom');
         const mfInput = document.getElementById('settingMf');
         const cdInput = document.getElementById('settingContractDemand');
-        const tariffInput = document.getElementById('settingTariffRate');
         const resetCheck = document.getElementById('settingMeterResetFlag');
         const solarCheck = document.getElementById('settingHasSolar');
         const solarCapInput = document.getElementById('settingSolarCapacity');
@@ -10956,7 +10876,6 @@
         }
         if (mfInput) mfInput.value = plant.mf;
         if (cdInput) cdInput.value = plant.contractDemand;
-        if (tariffInput) tariffInput.value = plant.tariffRate;
         if (resetCheck) resetCheck.checked = !!plant.isMeterReset;
         if (solarCheck) solarCheck.checked = !!plant.hasSolar;
         if (solarCapInput) solarCapInput.value = plant.solarCapacity || '';
@@ -11178,7 +11097,6 @@
           discom: document.getElementById('settingDiscom').value,
           mf: parseFloat(document.getElementById('settingMf').value) || 1,
           contractDemand: parseFloat(document.getElementById('settingContractDemand').value) || 0,
-          tariffRate: parseFloat(document.getElementById('settingTariffRate').value) || 7.5,
           hasSolar: document.getElementById('settingHasSolar').checked,
           solarCapacity: parseFloat(document.getElementById('settingSolarCapacity').value) || 0,
           solarMf: parseFloat(document.getElementById('settingSolarMf').value) || 1,
@@ -12181,7 +12099,6 @@
         const discom = document.getElementById('regDiscom')?.value || 'PGVCL';
         const mf = parseFloat(document.getElementById('regMf')?.value) || 1;
         const contractDemand = parseFloat(document.getElementById('regContractDemand')?.value) || 50;
-        const tariffRate = parseFloat(document.getElementById('regTariffRate')?.value) || 7.50;
         const adminName = document.getElementById('regAdminName').value.trim();
         const adminEmail = document.getElementById('regAdminEmail').value.trim().toLowerCase();
         const adminPass = document.getElementById('regAdminPass').value;
@@ -12231,7 +12148,6 @@
             discom,
             mf,
             contractDemand,
-            tariffRate,
             adminName,
             adminEmail,
             adminPassword: adminPass
@@ -12382,7 +12298,6 @@
                   'Customer / Consumer Number': regData.consumerNo,
                   'Admin Password': regData.adminPassword,
                   'DISCOM': regData.discom,
-                  'Tariff Rate': `₹${regData.tariffRate}/kWh`,
                   'Notice': 'Please save this email for your records. You can log in from any mobile or device using your Customer Number and Admin Password.'
                 })
               }).catch(err => console.warn('Registration mail send warning:', err));
@@ -12585,8 +12500,6 @@
         const plantName = activePlant ? activePlant.name : 'Factory';
         const isSolar = (record.meterType === 'solar');
         const meterName = getMeterName(activePlant, record.meterType);
-        const tariffRate = activePlant ? activePlant.tariffRate : 7.5;
-        const cost = Math.round(record.deltaKwh * tariffRate);
         const formattedDate = formatDisplayDate(record.date);
 
         const titleEl = document.getElementById('successModalTitle');
@@ -12598,9 +12511,7 @@
         const pfRow = document.getElementById('successPfRow');
         const mdEl = document.getElementById('successMd');
         const mdRow = document.getElementById('successMdRow');
-        const costEl = document.getElementById('successCost');
         const lblUnits = document.getElementById('lblSuccessUnits');
-        const lblCost = document.getElementById('lblSuccessCost');
 
         if (titleEl) titleEl.textContent = titleText || 'Saved!';
         if (plantEl) plantEl.textContent = plantName;
@@ -12608,7 +12519,6 @@
         if (dateEl) dateEl.textContent = formattedDate;
 
         if (lblUnits) lblUnits.textContent = isSolar ? 'Daily Gen:' : 'Daily Units:';
-        if (lblCost) lblCost.textContent = isSolar ? 'Estimated Savings:' : 'Estimated Cost:';
 
         if (unitsEl) unitsEl.textContent = `+${formatEnergyValue(record.deltaKwh, true)}`;
 
@@ -12626,9 +12536,6 @@
             mdEl.innerHTML = `<span class="pf-badge ${mdStatus.badgeClass}">${record.md} kW (${mdStatus.shortLabel})</span>`;
           }
         }
-
-        if (costEl) costEl.textContent = `₹${cost.toLocaleString()}`;
-
         const modal = document.getElementById('successModal');
         if (modal) modal.classList.add('active');
       },
