@@ -3,6 +3,7 @@ name: Deploy Energy App
 on:
   push:
     branches:
+      - k4kanzariya80-fix-last-month-history
       - k4kanzariya80-reading-date-rules
     paths:
       - index.html

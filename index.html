@@ -5293,12 +5293,19 @@
         if (activeRange === 'all') return sorted;
 
         const now = new Date();
+        const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        if (activeRange === 'this_month') {
+          return sorted.filter(r => typeof r.date === 'string' && r.date >= currentMonthStart);
+        }
+        if (activeRange === 'last_month') {
+          const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const previousMonthStart = `${previousMonth.getFullYear()}-${String(previousMonth.getMonth() + 1).padStart(2, '0')}-01`;
+          return sorted.filter(r => typeof r.date === 'string' && r.date >= previousMonthStart && r.date < currentMonthStart);
+        }
+
         let cutoffDate = new Date();
 
-        if (activeRange === 'this_month') {
-          // 1st day of current month (Default super fast view)
-          cutoffDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        } else if (activeRange === '3m') {
+        if (activeRange === '3m') {
           cutoffDate.setDate(cutoffDate.getDate() - 90);
         } else if (activeRange === '6m') {
           cutoffDate.setDate(cutoffDate.getDate() - 180);
