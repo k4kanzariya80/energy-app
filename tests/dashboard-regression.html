@@ -134,6 +134,17 @@
             return Number.isFinite(actual) && Math.abs(actual - expected) < 0.01;
           }
 
+          check('bill estimate UI and calculator are absent while dashboard and report tools remain', () => {
+            assert(!appDocument.getElementById('billingEstimateModal'), 'bill estimate modal must not be present');
+            assert(!appDocument.getElementById('btnDownloadBillEstimate'), 'bill estimate download button must not be present');
+            assert(!Array.from(appDocument.querySelectorAll('button')).some(button => /PGVCL HT-1 Bill Estimate/i.test(button.textContent)), 'bill estimate dashboard action must not be present');
+            assert(typeof appWindow.BillingCalculator === 'undefined', 'bill estimate calculator must not be exposed');
+            assert(appDocument.getElementById('cardMetricAverageUnits'), 'dashboard average card must remain present');
+            assert(appDocument.getElementById('dailyReadingForm'), 'daily reading form must remain present');
+            assert(appDocument.getElementById('exportCsvModal'), 'energy report export modal must remain present');
+            return 'Estimate controls and calculator removed; dashboard readings and report export remain';
+          });
+
           check('the full average card cycles 7 to 15 to 30 days and wraps to 7', () => {
             assert(periodLabel.textContent === '7 days', '7 days must be the initial period');
             assert(periodButton.getAttribute('aria-label').includes('15 days'), 'accessible label must describe the next period');

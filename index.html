@@ -578,12 +578,6 @@
         </div>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; margin:-8px 0 16px;">
-        <button type="button" class="btn btn-secondary" onclick="BillingCalculator.open()" style="padding:8px 14px; font-size:0.84rem; font-weight:700;">
-          🧾 PGVCL HT-1 Bill Estimate
-        </button>
-      </div>
-
       <!-- Executive Plant Health & Summary Card for Viewer Role (Replaces entry form) -->
       <div class="card-section" id="viewerExecutiveCard" style="display:none; background:linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border:1.5px solid #cbd5e1; border-radius:var(--radius-md); box-shadow:0 4px 20px -2px rgba(0,0,0,0.06); padding:20px; margin-bottom:20px;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:12px;">
@@ -2464,74 +2458,6 @@
           <button type="button" class="btn btn-secondary" onclick="App.closeEditSubMeterModal()" style="flex:1; padding:10px; font-size:0.85rem;">
             Cancel
           </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- PGVCL HT-1 Bill Estimate Modal -->
-  <div id="billingEstimateModal" class="modal-backdrop">
-    <div class="modal-card" style="max-width:820px;">
-      <div class="modal-header">
-        <h3 class="modal-title">🧾 Industrial HT Bill Estimate</h3>
-        <button type="button" class="btn-close-modal" onclick="BillingCalculator.close()">&times;</button>
-      </div>
-      <p style="font-size:0.8rem; line-height:1.5; color:var(--text-muted); margin-bottom:14px;">
-        PGVCL HT-1 rates below are transcribed from the four bills provided. Verify the applicable tariff before relying on this estimate. Enter billing-period readings from the bill; this estimate excludes arrears, payment adjustments and charges not listed below. PF adjustment is entered as a signed percentage; this tool does not infer PF penalty tiers.
-      </p>
-      <form id="billingEstimateForm" onsubmit="event.preventDefault(); BillingCalculator.calculateAndRender();">
-        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;">
-          <div class="form-group">
-            <label for="billEstimatePeriod">Billing period</label>
-            <input type="month" id="billEstimatePeriod" class="form-control">
-          </div>
-          <div class="form-group">
-            <label for="billEstimateUnits">Total units (kWh)</label>
-            <input type="number" min="0" step="any" id="billEstimateUnits" class="form-control" required>
-          </div>
-          <div class="form-group">
-            <label for="billEstimateContractDemand">Contract demand (kVA)</label>
-            <input type="number" min="0" step="any" id="billEstimateContractDemand" class="form-control" placeholder="Confirm from latest bill (e.g. 1400)" required>
-          </div>
-          <div class="form-group">
-            <label for="billEstimateActualDemand">Actual maximum demand (kVA)</label>
-            <input type="number" min="0" step="any" id="billEstimateActualDemand" class="form-control" value="0">
-          </div>
-          <div class="form-group">
-            <label for="billEstimateMinDemand">Minimum billable demand (% of contract)</label>
-            <input type="number" min="0" max="100" step="any" id="billEstimateMinDemand" class="form-control" value="85">
-          </div>
-          <div class="form-group">
-            <label for="billEstimateNightUnits">Night units (kWh)</label>
-            <input type="number" min="0" step="any" id="billEstimateNightUnits" class="form-control" value="0">
-          </div>
-          <div class="form-group">
-            <label for="billEstimateTouUnits">TOU units (kWh)</label>
-            <input type="number" min="0" step="any" id="billEstimateTouUnits" class="form-control" value="0">
-          </div>
-        </div>
-        <details style="margin:14px 0;">
-          <summary style="cursor:pointer; font-weight:700; color:var(--primary);">Tariff rates &amp; adjustments (editable)</summary>
-          <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-top:12px;">
-            <div class="form-group"><label for="billRateEnergy">Energy rate (₹/kWh)</label><input type="number" min="0" step="any" id="billRateEnergy" class="form-control" value="4.20"></div>
-            <div class="form-group"><label for="billRateFuel">Fuel charge (₹/kWh)</label><input type="number" min="0" step="any" id="billRateFuel" class="form-control" value="2.30"></div>
-            <div class="form-group"><label for="billRateDemand1">First 500 kVA (₹/kVA)</label><input type="number" min="0" step="any" id="billRateDemand1" class="form-control" value="150"></div>
-            <div class="form-group"><label for="billRateDemand2">Next 500 kVA (₹/kVA)</label><input type="number" min="0" step="any" id="billRateDemand2" class="form-control" value="260"></div>
-            <div class="form-group"><label for="billRateDemandNext">Remaining kVA (₹/kVA)</label><input type="number" min="0" step="any" id="billRateDemandNext" class="form-control" value="475"></div>
-            <div class="form-group"><label for="billRatePfAdjustment">PF adjustment (%; rebate is negative)</label><input type="number" step="any" id="billRatePfAdjustment" class="form-control" value="-2.45"></div>
-            <div class="form-group"><label for="billRateEhvAdjustment">EHV adjustment (%; rebate is negative)</label><input type="number" step="any" id="billRateEhvAdjustment" class="form-control" value="-1"></div>
-            <div class="form-group"><label for="billRateTou">TOU charge (₹/unit)</label><input type="number" min="0" step="any" id="billRateTou" class="form-control" value="0.85"></div>
-            <div class="form-group"><label for="billRateNightRebate">Night rebate (₹/unit)</label><input type="number" min="0" step="any" id="billRateNightRebate" class="form-control" value="0"></div>
-            <div class="form-group"><label for="billRateDuty">Electricity duty (%)</label><input type="number" min="0" max="100" step="any" id="billRateDuty" class="form-control" value="15"></div>
-            <div class="form-group"><label for="billOtherAdjustment">Other charges / credits (₹)</label><input type="number" step="any" id="billOtherAdjustment" class="form-control" value="0"></div>
-          </div>
-        </details>
-        <div id="billEstimateError" role="alert" style="display:none; color:var(--danger); font-weight:700; margin:10px 0;"></div>
-        <div id="billEstimateResult" aria-live="polite" style="display:none; overflow-x:auto; margin:14px 0;"></div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" style="padding:10px;">Calculate Estimate</button>
-          <button type="button" id="btnDownloadBillEstimate" class="btn btn-secondary" onclick="BillingCalculator.downloadExcel()" style="padding:10px;" disabled>Download Excel</button>
-          <button type="button" class="btn btn-secondary" onclick="BillingCalculator.close()" style="padding:10px;">Close</button>
         </div>
       </form>
     </div>
@@ -6421,179 +6347,6 @@
             this.mdChartInstance = null;
           }
         }
-      }
-    };
-
-    const BillingCalculator = {
-      lastResult: null,
-
-      open() {
-        const modal = document.getElementById('billingEstimateModal');
-        const periodInput = document.getElementById('billEstimatePeriod');
-        if (periodInput && !periodInput.value) {
-          periodInput.value = getDeviceLocalDateString().slice(0, 7);
-        }
-        this.lastResult = null;
-        const result = document.getElementById('billEstimateResult');
-        const error = document.getElementById('billEstimateError');
-        const downloadButton = document.getElementById('btnDownloadBillEstimate');
-        if (result) result.style.display = 'none';
-        if (error) {
-          error.style.display = 'none';
-          error.textContent = '';
-        }
-        if (downloadButton) downloadButton.disabled = true;
-        if (modal) modal.classList.add('active');
-      },
-
-      close() {
-        const modal = document.getElementById('billingEstimateModal');
-        if (modal) modal.classList.remove('active');
-      },
-
-      calculate(inputs) {
-        const requiredNonNegative = ['units', 'contractDemand', 'actualDemand', 'minimumDemandPercent', 'nightUnits', 'touUnits', 'energyRate', 'fuelRate', 'demandRate1', 'demandRate2', 'demandRateNext', 'touRate', 'nightRebateRate', 'dutyPercent'];
-        for (const key of requiredNonNegative) {
-          if (!Number.isFinite(inputs[key]) || inputs[key] < 0) {
-            throw new Error('Please enter valid non-negative values for the billing and tariff fields.');
-          }
-        }
-        if (inputs.units <= 0 || inputs.contractDemand <= 0) {
-          throw new Error('Total units and contract demand must be greater than zero.');
-        }
-        if (inputs.minimumDemandPercent > 100 || inputs.dutyPercent > 100) {
-          throw new Error('Minimum billable demand and electricity duty cannot exceed 100%.');
-        }
-        if (inputs.nightUnits > inputs.units || inputs.touUnits > inputs.units) {
-          throw new Error('Night units and TOU units cannot be greater than total units.');
-        }
-        if (!Number.isFinite(inputs.pfAdjustmentPercent) || Math.abs(inputs.pfAdjustmentPercent) > 100 ||
-            !Number.isFinite(inputs.ehvAdjustmentPercent) || Math.abs(inputs.ehvAdjustmentPercent) > 100 ||
-            !Number.isFinite(inputs.otherAdjustment)) {
-          throw new Error('Please enter valid adjustment percentages and other charges/credits.');
-        }
-
-        const roundMoney = amount => Math.round((amount + Number.EPSILON) * 100) / 100;
-        const billableDemand = Math.max(inputs.actualDemand, inputs.contractDemand * inputs.minimumDemandPercent / 100);
-        const firstDemand = Math.min(billableDemand, 500) * inputs.demandRate1;
-        const secondDemand = Math.min(Math.max(billableDemand - 500, 0), 500) * inputs.demandRate2;
-        const remainingDemand = Math.max(billableDemand - 1000, 0) * inputs.demandRateNext;
-        const energyCharge = inputs.units * inputs.energyRate;
-        const charges = [
-          { label: 'Energy charges', amount: roundMoney(energyCharge) },
-          { label: 'Fuel charge', amount: roundMoney(inputs.units * inputs.fuelRate) },
-          { label: 'Demand charges (tiered)', amount: roundMoney(firstDemand + secondDemand + remainingDemand) },
-          { label: 'PF adjustment', amount: roundMoney(energyCharge * inputs.pfAdjustmentPercent / 100) },
-          { label: 'EHV adjustment', amount: roundMoney(energyCharge * inputs.ehvAdjustmentPercent / 100) },
-          { label: 'TOU charge', amount: roundMoney(inputs.touUnits * inputs.touRate) },
-          { label: 'Night rebate', amount: roundMoney(-inputs.nightUnits * inputs.nightRebateRate) }
-        ];
-        const consumptionCharges = roundMoney(charges.reduce((sum, charge) => sum + charge.amount, 0));
-        const electricityDuty = roundMoney(consumptionCharges * inputs.dutyPercent / 100);
-        const total = roundMoney(consumptionCharges + electricityDuty + inputs.otherAdjustment);
-
-        return {
-          period: inputs.period || 'Not specified',
-          units: inputs.units,
-          billingDemand: roundMoney(billableDemand),
-          charges,
-          consumptionCharges,
-          electricityDuty,
-          otherAdjustment: roundMoney(inputs.otherAdjustment),
-          total
-        };
-      },
-
-      readInputs() {
-        const value = id => {
-          const element = document.getElementById(id);
-          return element ? element.valueAsNumber : NaN;
-        };
-        return {
-          period: document.getElementById('billEstimatePeriod').value,
-          units: value('billEstimateUnits'),
-          contractDemand: value('billEstimateContractDemand'),
-          actualDemand: value('billEstimateActualDemand'),
-          minimumDemandPercent: value('billEstimateMinDemand'),
-          nightUnits: value('billEstimateNightUnits'),
-          touUnits: value('billEstimateTouUnits'),
-          energyRate: value('billRateEnergy'),
-          fuelRate: value('billRateFuel'),
-          demandRate1: value('billRateDemand1'),
-          demandRate2: value('billRateDemand2'),
-          demandRateNext: value('billRateDemandNext'),
-          pfAdjustmentPercent: value('billRatePfAdjustment'),
-          ehvAdjustmentPercent: value('billRateEhvAdjustment'),
-          touRate: value('billRateTou'),
-          nightRebateRate: value('billRateNightRebate'),
-          dutyPercent: value('billRateDuty'),
-          otherAdjustment: value('billOtherAdjustment')
-        };
-      },
-
-      calculateAndRender() {
-        const error = document.getElementById('billEstimateError');
-        const result = document.getElementById('billEstimateResult');
-        const downloadButton = document.getElementById('btnDownloadBillEstimate');
-        try {
-          const estimate = this.calculate(this.readInputs());
-          const rows = estimate.charges.map(charge =>
-            `<tr><td style="padding:7px 10px; border-bottom:1px solid var(--border);">${charge.label}</td><td style="padding:7px 10px; border-bottom:1px solid var(--border); text-align:right;">₹${charge.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>`
-          ).join('');
-          const money = amount => `₹${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-          result.innerHTML = `
-            <div style="font-weight:700; margin-bottom:8px;">${estimate.period} · ${estimate.units.toLocaleString('en-IN')} units · Billable demand ${estimate.billingDemand.toLocaleString('en-IN')} kVA</div>
-            <table style="width:100%; border-collapse:collapse; font-size:0.86rem;">
-              <tbody>${rows}
-                <tr><th scope="row" style="padding:8px 10px; text-align:left;">Consumption charges</th><td style="padding:8px 10px; text-align:right;">${money(estimate.consumptionCharges)}</td></tr>
-                <tr><td style="padding:7px 10px;">Electricity duty</td><td style="padding:7px 10px; text-align:right;">${money(estimate.electricityDuty)}</td></tr>
-                <tr><td style="padding:7px 10px;">Other charges / credits</td><td style="padding:7px 10px; text-align:right;">${money(estimate.otherAdjustment)}</td></tr>
-                <tr><th scope="row" style="padding:10px; text-align:left; border-top:2px solid var(--border);">Estimated current bill</th><th style="padding:10px; text-align:right; border-top:2px solid var(--border);">${money(estimate.total)}</th></tr>
-              </tbody>
-            </table>`;
-          result.style.display = 'block';
-          error.style.display = 'none';
-          error.textContent = '';
-          downloadButton.disabled = false;
-          this.lastResult = estimate;
-          return estimate;
-        } catch (err) {
-          this.lastResult = null;
-          result.style.display = 'none';
-          downloadButton.disabled = true;
-          error.textContent = err.message;
-          error.style.display = 'block';
-          return null;
-        }
-      },
-
-      downloadExcel() {
-        const estimate = this.calculateAndRender();
-        if (!estimate) return;
-        if (!window.XLSX) {
-          alert('Excel library not loaded. Please try again when the app is online.');
-          return;
-        }
-        const moneyRows = estimate.charges.map(charge => [charge.label, charge.amount]);
-        moneyRows.push(
-          ['Consumption charges', estimate.consumptionCharges],
-          ['Electricity duty', estimate.electricityDuty],
-          ['Other charges / credits', estimate.otherAdjustment],
-          ['Estimated current bill', estimate.total]
-        );
-        const sheet = window.XLSX.utils.aoa_to_sheet([
-          ['PGVCL HT-1 Industrial Bill Estimate', estimate.period],
-          ['Total units (kWh)', estimate.units],
-          ['Contract demand (kVA)', this.readInputs().contractDemand],
-          ['Billable demand (kVA)', estimate.billingDemand],
-          [],
-          ['Charge', 'Amount (₹)'],
-          ...moneyRows
-        ]);
-        const workbook = window.XLSX.utils.book_new();
-        window.XLSX.utils.book_append_sheet(workbook, sheet, 'Bill Estimate');
-        const period = (estimate.period || getDeviceLocalDateString().slice(0, 7)).replace(/[^0-9-]/g, '');
-        window.XLSX.writeFile(workbook, `PGVCL_HT1_Bill_Estimate_${period}.xlsx`);
       }
     };
 
@@ -12955,7 +12708,6 @@
     window.PowerCutManager = PowerCutManager;
     window.ChartsManager = ChartsManager;
     window.ExportUtil = ExportUtil;
-    window.BillingCalculator = BillingCalculator;
     window.App = App;
 
     // Unregister any old Service Workers & Purge Caches to prevent stale caching issues
