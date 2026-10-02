@@ -58,6 +58,7 @@
           date: dateDaysAgo(daysAgo),
           daysElapsed,
           deltaKwh,
+          kwh: deltaKwh,
           avgDailyKwh: deltaKwh / daysElapsed,
           calculatedPf,
           md: 12
@@ -71,6 +72,7 @@
           const plant = {
             id: 'factory-a',
             contractDemand: 20,
+            hasSolar: true,
             subMeters: [{ id: 'sub_one', name: 'Mixer' }, { id: 'sub_two', name: 'Pump' }]
           };
           const fixtureReadings = [
@@ -100,19 +102,39 @@
             App.refreshDashboardMetrics('factory-a');
           `);
 
-          const select = appDocument.getElementById('dashboardAverageDays');
+          const periodButton = appDocument.getElementById('dashboardAverageDays');
           const averageValue = appDocument.getElementById('metricAverageUnits');
           function chooseDays(days) {
-            select.value = String(days);
-            select.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            let attempts = 0;
+            while (appWindow.App.dashboardAverageDays !== days && attempts < 3) {
+              periodButton.click();
+              attempts++;
+            }
             return parseFloat(averageValue.textContent);
+          }
+          function chooseAverageMeter(meterType) {
+            appDocument.getElementById('dashboardAverageMeterButton').click();
+            const option = appDocument.querySelector(`[data-meter-type="${meterType}"]`);
+            assert(option, `average meter option ${meterType} must be available`);
+            option.click();
           }
           function closeTo(actual, expected) {
             return Number.isFinite(actual) && Math.abs(actual - expected) < 0.01;
           }
 
+          check('period button cycles 7 to 15 to 30 days and wraps to 7', () => {
+            assert(periodButton.textContent === '7 days', '7 days must be the initial period');
+            assert(periodButton.getAttribute('aria-label').includes('15 days'), 'accessible label must describe the next period');
+            periodButton.click();
+            assert(periodButton.textContent === '15 days', 'first tap must select 15 days');
+            periodButton.click();
+            assert(periodButton.textContent === '30 days', 'second tap must select 30 days');
+            periodButton.click();
+            assert(periodButton.textContent === '7 days', 'third tap must wrap to 7 days');
+            return 'Touch-friendly button cycles and exposes its next period';
+          });
           check('7-day selection prorates overlapping intervals and excludes uncovered days', () => {
-            assert(select.value === '7', '7 days must be the default');
+            assert(appWindow.App.dashboardAverageDays === 7, '7 days must be the default');
             const average = chooseDays(7);
             assert(closeTo(average, 15), `expected 15.00 kWh/day, received ${average}`);
             return `${averageValue.textContent}; ${appDocument.getElementById('metricAverageCoverage').textContent}`;
@@ -135,6 +157,25 @@
             assert(closeTo(parseFloat(averageValue.textContent), 3.5), `expected solar average of 3.50, received ${averageValue.textContent}`);
             assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Solar Generation', 'solar label must say generation');
             return 'Factory isolation and Solar Generation label verified';
+          });
+          check('average meter menu lists actual sub-meters and is independent of dashboard context', () => {
+            appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-a');`);
+            const mainUnits = appDocument.getElementById('metricUnits').textContent;
+            chooseAverageMeter('solar');
+            assert(closeTo(parseFloat(averageValue.textContent), 3.5), `expected solar average of 3.50, received ${averageValue.textContent}`);
+            assert(appWindow.App.currentMeterType === 'main', 'average selection must not change the dashboard meter context');
+            assert(appDocument.getElementById('metricUnits').textContent === mainUnits, 'main-meter units must remain in the current dashboard context');
+            chooseAverageMeter('sub_one');
+            assert(closeTo(parseFloat(averageValue.textContent), 4), `expected Mixer average of 4.00, received ${averageValue.textContent}`);
+            assert(appDocument.getElementById('lblMetricAverageTitle').textContent.includes('Sub-Meter Units · Mixer'), 'selected sub-meter name must appear with the sub-meter label');
+            chooseAverageMeter('sub_two');
+            assert(closeTo(parseFloat(averageValue.textContent), 6), `expected Pump average of 6.00, received ${averageValue.textContent}`);
+            appDocument.getElementById('dashboardAverageMeterButton').click();
+            const menuOptions = Array.from(appDocument.querySelectorAll('#dashboardAverageMeterMenu [data-meter-type]')).map(option => option.textContent);
+            assert(menuOptions.some(option => option.includes('Mixer')) && menuOptions.some(option => option.includes('Pump')), 'all configured sub-meter names must be listed');
+            assert(menuOptions.some(option => option.includes('Main Meter')) && menuOptions.some(option => option.includes('Solar Meter')), 'main and enabled solar meters must be listed');
+            appDocument.getElementById('dashboardAverageMeterMenu').querySelector('[data-meter-type="submeters"]').click();
+            return 'Meter choices recalculate independently and list configured names';
           });
           check('sub-meter average sums each meter’s observed daily rate', () => {
             appWindow.eval(`App.currentMeterType = 'submeters'; App.refreshDashboardMetrics('factory-a');`);
@@ -159,14 +200,90 @@
             assert(appDocument.getElementById('previewPf').textContent === '0.950', 'entry-form PF preview must still render');
             return 'Existing entry-form units and PF previews remain unchanged';
           });
-          check('Power Factor follows all other dashboard metric cards on mobile', () => {
+          check('one visible shared date picker is used by each sub-meter entry and validation', () => {
+            const dateSection = appDocument.getElementById('readingDateSection');
+            const dateInput = appDocument.getElementById('inputDate');
+            appWindow.__dashboardExpectedDate = dateDaysAgo(0);
+            appWindow.__dashboardValidatedDates = [];
+            appWindow.__dashboardSubmittedSubReadings = [];
+            appWindow.alert = () => {};
+            appWindow.eval(`
+              AuthManager.getCurrentUser = () => ({ role: 'worker', name: 'Regression Worker' });
+              HistoryManager.canWriteToPlant = () => true;
+              window.__dashboardStoredReadings = window.__dashboardTestReadings.slice();
+              HistoryManager.getAllReadings = () => window.__dashboardStoredReadings;
+              App.checkUserAccess = () => true;
+              App.renderMeterTypeSelector = () => {};
+              App.updatePowerCutStatusView = () => {};
+              App.initDayPicker = () => {};
+              App.updatePreviousHints = () => {};
+              HistoryManager.recalculatePlantReadings = () => {};
+              HistoryManager.renderHistoryTable = () => {};
+              App.populateAnalyticsMeterSelector = () => {};
+              ChartsManager.renderCharts = () => {};
+              App.renderStaffList = () => {};
+              App.populatePlantSettings = () => {};
+              App.renderSubMetersListInSettings = () => {};
+              App.handleLiveFormCalculation = () => {};
+              App.currentMeterType = 'submeters';
+              App.refreshSelectedFactoryView();
+              const originalIsRecordAddable = HistoryManager.isRecordAddable;
+              HistoryManager.isRecordAddable = function(date, plantId) {
+                window.__dashboardValidatedDates.push(date);
+                return plantId === 'factory-a' && originalIsRecordAddable.call(this, date, plantId);
+              };
+              App.showToast = () => {};
+              App.refreshDashboardMetrics('factory-a');
+              App.renderSubMetersEntryList(window.__dashboardTestPlant);
+            `);
+            assert(appWindow.getComputedStyle(dateSection).display !== 'none', 'shared reading date section must be visible for writers');
+            assert(dateInput.type === 'date' && appWindow.getComputedStyle(dateInput).display !== 'none', 'shared native date input must be visible and usable');
+            assert(!appDocument.getElementById('subMeterDaySelect') && !appDocument.getElementById('subMeterCustomDate'), 'sub-meter entry must not have a duplicate date field');
+            dateInput.value = appWindow.__dashboardExpectedDate;
+            dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            appDocument.getElementById('inputKwh_sub_sub_one').value = '50';
+            appWindow.App.submitSingleSubMeterReading('sub_one');
+            appWindow.__dashboardSubmittedSubReadings.push(
+              appWindow.__dashboardStoredReadings.find(reading => reading.meterType === 'sub_one' && reading.date === appWindow.__dashboardExpectedDate)
+            );
+            dateInput.value = dateDaysAgo(6);
+            dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            appDocument.getElementById('inputKwh_sub_sub_two').value = '75';
+            appWindow.App.submitSingleSubMeterReading('sub_two');
+            assert(appWindow.__dashboardSubmittedSubReadings.length === 1, 'date validation must reject a sub-meter reading outside the allowed date');
+            dateInput.value = appWindow.__dashboardExpectedDate;
+            dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            appDocument.getElementById('inputKwh_sub_sub_two').value = '75';
+            appWindow.App.submitSingleSubMeterReading('sub_two');
+            appWindow.__dashboardSubmittedSubReadings.push(
+              appWindow.__dashboardStoredReadings.find(reading => reading.meterType === 'sub_two' && reading.date === appWindow.__dashboardExpectedDate)
+            );
+            const saved = Array.from(appWindow.__dashboardSubmittedSubReadings).filter(Boolean);
+            assert(saved.length === 2, `both configured sub-meters must accept entries for the shared date; saved ${saved.length}, validation dates ${appWindow.__dashboardValidatedDates.join(', ')}`);
+            assert(saved.every(reading => reading.date === appWindow.__dashboardExpectedDate), 'each sub-meter save must use the selected shared date');
+            assert(appWindow.__dashboardValidatedDates.includes(dateDaysAgo(6)), 'the selected invalid date must reach validation');
+            assert(appWindow.__dashboardValidatedDates.filter(date => date === appWindow.__dashboardExpectedDate).length >= 2, 'the selected valid date must reach validation for both meters');
+            return `Mixer and Pump saved for ${appWindow.__dashboardExpectedDate}; invalid date was rejected`;
+          });
+          check('mobile metric cards pair readings above Power Factor and Maximum Demand', () => {
             const grid = appDocument.querySelector('.metrics-grid');
-            const cards = Array.from(grid.children).filter(element => element.classList.contains('metric-card'));
-            assert(cards[cards.length - 1].id === 'cardMetricPf', 'Power Factor must be last in DOM/grid order');
             assert(appWindow.matchMedia('(max-width: 640px)').matches, 'test frame must use the mobile breakpoint');
+            const units = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
+            const average = appWindow.getComputedStyle(appDocument.getElementById('cardMetricAverageUnits'));
+            const pf = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
+            const md = appWindow.getComputedStyle(appDocument.getElementById('cardMetricMd'));
+            assert(units.gridColumnStart === '1' && units.gridRowStart === '1', 'Today’s Units must be top-left');
+            assert(average.gridColumnStart === '2' && average.gridRowStart === '1', 'Average Daily Units must be top-right');
+            assert(pf.gridColumnStart === '1' && pf.gridRowStart === '2', 'Power Factor must be bottom-left');
+            assert(md.gridColumnStart === '2' && md.gridRowStart === '2', 'Maximum Demand must be bottom-right');
             const pfGridColumn = appWindow.getComputedStyle(appDocument.getElementById('cardMetricPf'));
-            assert(pfGridColumn.gridColumnStart === '1' && pfGridColumn.gridColumnEnd === '-1', 'Power Factor must span the final mobile row');
-            return 'Power Factor is last and spans the mobile grid';
+            assert(pfGridColumn.gridColumnEnd !== '-1', 'Power Factor must not span a full-width row');
+            const originalWidth = frame.style.width;
+            frame.style.width = '1024px';
+            const desktopColumns = appWindow.getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+            frame.style.width = originalWidth;
+            assert(desktopColumns >= 4, 'desktop metric grid must retain its multi-column layout');
+            return 'Mobile rows are paired; desktop remains a multi-column grid';
           });
 
           status.textContent = 'Browser regression checks complete.';

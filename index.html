@@ -128,6 +128,15 @@
 
     /* Metrics Grid */
     .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .metric-period-button, .metric-meter-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; cursor: pointer; }
+    .metric-period-button { white-space: nowrap; }
+    .metric-meter-selector { position: relative; z-index: 2; min-width: 0; }
+    .metric-meter-button { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .metric-meter-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; gap: 4px; width: max-content; min-width: 150px; max-width: min(240px, 70vw); max-height: 220px; overflow-y: auto; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); box-shadow: var(--shadow-lg); }
+    .metric-meter-menu[hidden] { display: none; }
+    .metric-meter-option { min-height: 36px; padding: 7px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-main); text-align: left; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .metric-meter-option:hover, .metric-meter-option[aria-pressed="true"] { background: var(--bg-card-hover); color: var(--primary); }
+    .metric-controls { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
     .metric-card::before { content: ''; position: absolute; top: 0; left: 0; width: 5px; height: 100%; background: var(--primary); transition: all 0.25s ease; }
     .metric-card.solar-card::before { background: var(--solar); }
     .metric-card.success::before { background: #16a34a; }
@@ -140,7 +149,6 @@
     .metric-title { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
     .metric-value { font-size: 1.7rem; font-weight: 800; color: var(--text-main); line-height: 1.2; transition: color 0.25s ease; }
     .metric-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 4px; }
-    .metric-period-select { max-width: 82px; padding: 5px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-main); font-size: 0.76rem; font-weight: 700; }
     .metric-average-coverage { display: block; margin-top: 6px; color: var(--text-muted); font-size: 0.72rem; }
 
     .pf-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: var(--radius-full); font-size: 0.78rem; font-weight: 700; transition: all 0.2s ease; }
@@ -367,8 +375,11 @@
       #btnHeaderGuide span:last-child { display: none; }
       #btnUserRole { padding: 4px 8px !important; gap: 4px !important; margin-left: 0 !important; }
       .metrics-grid { grid-template-columns: 1fr 1fr; }
+      #cardMetricUnits { grid-column: 1; grid-row: 1; }
+      #cardMetricAverageUnits { grid-column: 2; grid-row: 1; }
+      #cardMetricPf { grid-column: 1; grid-row: 2; }
+      #cardMetricMd { grid-column: 2; grid-row: 2; }
       .metric-value { font-size: 1.3rem; }
-      .power-factor-dashboard-card { grid-column: 1 / -1; }
       .form-grid { grid-template-columns: 1fr; }
       .meter-type-bar { padding: 4px 10px !important; background: transparent !important; border-bottom: none !important; }
       .meter-type-container { flex-direction: row !important; align-items: center !important; gap: 6px !important; width: 100% !important; box-sizing: border-box; }
@@ -528,12 +539,13 @@
         <div class="metric-card" id="cardMetricAverageUnits">
           <div class="metric-header">
             <span class="metric-title" id="lblMetricAverageTitle">Average Daily Main Meter Units</span>
-            <label for="dashboardAverageDays" style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;">Average period</label>
-            <select id="dashboardAverageDays" class="metric-period-select" aria-label="Average period" onchange="App.setDashboardAverageDays(this.value)">
-              <option value="7" selected>7 days</option>
-              <option value="15">15 days</option>
-              <option value="30">30 days</option>
-            </select>
+          </div>
+          <div class="metric-controls">
+            <button type="button" id="dashboardAverageDays" class="metric-period-button" aria-label="Average period: 7 days. Tap to switch to 15 days." onclick="App.cycleDashboardAverageDays()">7 days</button>
+            <div class="metric-meter-selector">
+              <button type="button" id="dashboardAverageMeterButton" class="metric-meter-button" aria-label="Average meter: Main Meter. Tap to choose a meter." aria-haspopup="true" aria-expanded="false" aria-controls="dashboardAverageMeterMenu" onclick="App.toggleDashboardAverageMeterMenu()">⚡ Main</button>
+              <div id="dashboardAverageMeterMenu" class="metric-meter-menu" role="group" aria-label="Choose average meter" hidden></div>
+            </div>
           </div>
           <div class="metric-value">
             <span id="metricAverageUnits">—</span>
@@ -606,6 +618,18 @@
         </div>
       </div>
 
+      <div class="card-section" id="readingDateSection">
+        <div class="form-group" style="max-width:360px; margin-bottom:0;">
+          <label for="inputDaySelect"><span style="font-weight:700;">Reading Date</span></label>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <select id="inputDaySelect" class="form-control" style="font-weight:700; font-size:1rem;" onchange="App.handleDaySelectChange()" aria-label="Quick-select an available reading date">
+            </select>
+            <input type="date" id="inputDate" class="form-control" form="dailyReadingForm" style="font-weight:700; padding:8px 12px;" onchange="App.handleCustomDateChange()" required aria-label="Reading date for main and sub-meter entries">
+            <small style="color:var(--text-muted); font-size:0.76rem;">This date is shared by the main-meter form and every sub-meter save below. Editors can enter today and the previous 4 days; Admins are unrestricted.</small>
+          </div>
+        </div>
+      </div>
+
       <!-- Clean Daily Reading Entry Form (Hidden for Viewer role) -->
       <div class="card-section" id="dailyEntrySection">
         <h2 class="section-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
@@ -618,18 +642,6 @@
         <form id="dailyReadingForm" onsubmit="App.submitDailyReading(event); return false;">
           <div class="form-grid">
             
-            <div class="form-group">
-              <label for="inputDaySelect">
-                <span>Date</span>
-              </label>
-              <div style="display:flex; flex-direction:column; gap:6px;">
-                <select id="inputDaySelect" class="form-control" style="font-weight:700; font-size:1rem;" onchange="App.handleDaySelectChange()">
-                </select>
-                <input type="date" id="inputDate" class="form-control" style="display:none; font-weight:700; padding:8px 12px;" onchange="App.handleCustomDateChange()" required>
-                <small style="color:var(--text-muted); font-size:0.76rem;">Editors can add and edit readings for today and the previous 4 days. Admins are unrestricted.</small>
-              </div>
-            </div>
-
             <!-- Active kWh -->
             <div class="form-group">
               <label for="inputKwh">
@@ -706,23 +718,6 @@
       <div class="card-section" id="subMetersEntrySection" style="display:none;">
         <div class="section-title">
           <span id="subMetersFormTitle">🔌 Sub-Meters Daily Entry</span>
-        </div>
-
-        <!-- Date Selector for Sub-Meters -->
-        <div style="background:var(--bg-card-hover); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 14px; margin-bottom:16px;">
-          <div class="form-group" style="max-width:300px; margin-bottom:0;">
-            <label for="subMeterDaySelect" style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-weight:700;">Reading Date</span>
-              <span id="fixedMonthYearBadgeSub" style="font-size:0.75rem; font-weight:700; color:var(--primary); background:var(--primary-light); padding:2px 8px; border-radius:var(--radius-full);">
-                Month Fixed
-              </span>
-            </label>
-            <div style="display:flex; flex-direction:column; gap:6px;">
-              <select id="subMeterDaySelect" class="form-control" style="font-weight:700; font-size:1rem;" onchange="App.handleSubMeterDaySelectChange()">
-              </select>
-              <input type="date" id="subMeterCustomDate" class="form-control" style="display:none; font-weight:700; padding:8px 12px;" onchange="App.handleSubMeterCustomDateChange()">
-            </div>
-          </div>
         </div>
 
         <!-- Dynamic List of Sub-Meters for this Factory -->
@@ -7604,8 +7599,13 @@
       analyticsMeterType: 'main',
       activeSubMeterHistoryId: null,
       dashboardAverageDays: 7,
+      dashboardAverageMeterType: null,
+      dashboardAverageMeterContext: null,
+      dashboardAverageMeterMenuOpen: false,
 
       clearDashboardDataView() {
+        const readingDateSection = document.getElementById('readingDateSection');
+        if (readingDateSection) readingDateSection.style.display = 'none';
         // Reset top header title & badges
         const topHeaderTitle = document.getElementById('topHeaderPlantTitle');
         if (topHeaderTitle) topHeaderTitle.textContent = '⚡ Energy';
@@ -7828,17 +7828,6 @@
         const month = now.getMonth();
         const todayDay = now.getDate();
 
-        const monthNames = [
-          'Jan', 'Feb', 'Mar', 'Apr',
-          'May', 'Jun', 'Jul', 'Aug',
-          'Sep', 'Oct', 'Nov', 'Dec'
-        ];
-
-        const monthBadge = document.getElementById('fixedMonthYearBadge');
-        if (monthBadge) monthBadge.textContent = `${monthNames[month]} ${year}`;
-        const monthBadgeSub = document.getElementById('fixedMonthYearBadgeSub');
-        if (monthBadgeSub) monthBadgeSub.textContent = `${monthNames[month]} ${year}`;
-
         const plant = ContractorManager.getActivePlant();
         const plantId = plant ? plant.id : null;
         const meterType = this.currentMeterType === 'submeters' ? 'main' : this.currentMeterType;
@@ -7858,54 +7847,49 @@
         }
 
         const daySelect = document.getElementById('inputDaySelect');
-        const daySelectSub = document.getElementById('subMeterDaySelect');
         const saveBtn = document.getElementById('btnSaveReading');
-        const customDateInput = document.getElementById('inputDate');
 
         // Only show unrecorded dates up to today (1 .. todayDay)
         const availableDays = [];
         for (let d = 1; d <= todayDay; d++) {
-          if (!recordedDays.has(d)) {
+          if (this.currentMeterType === 'submeters' || !recordedDays.has(d)) {
             availableDays.push(d);
           }
         }
 
-        [daySelect, daySelectSub].forEach(sel => {
-          if (sel) {
-            sel.innerHTML = '';
-            if (availableDays.length === 0) {
+        if (daySelect) {
+          daySelect.innerHTML = '';
+          if (availableDays.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = '✅ Current Month up to today completed!';
+            opt.disabled = true;
+            opt.selected = true;
+            daySelect.appendChild(opt);
+          } else {
+            availableDays.forEach(d => {
               const opt = document.createElement('option');
-              opt.value = '';
-              opt.textContent = '✅ Current Month up to today completed!';
-              opt.disabled = true;
-              opt.selected = true;
-              sel.appendChild(opt);
-            } else {
-              availableDays.forEach(d => {
-                const opt = document.createElement('option');
-                opt.value = d;
-                const dStr = d < 10 ? '0' + d : d;
-                const mStr = (month + 1) < 10 ? '0' + (month + 1) : (month + 1);
-                opt.textContent = `${dStr}/${mStr}/${year}`;
-                sel.appendChild(opt);
-              });
-              // Always prioritize Today's date by default if pending
-              if (availableDays.includes(todayDay)) {
-                sel.value = todayDay;
-              } else if (availableDays.length > 0) {
-                sel.value = availableDays[availableDays.length - 1];
-              }
+              opt.value = d;
+              const dStr = d < 10 ? '0' + d : d;
+              const mStr = (month + 1) < 10 ? '0' + (month + 1) : (month + 1);
+              opt.textContent = `${dStr}/${mStr}/${year}`;
+              daySelect.appendChild(opt);
+            });
+            // Always prioritize Today's date by default if pending
+            if (availableDays.includes(todayDay)) {
+              daySelect.value = todayDay;
+            } else if (availableDays.length > 0) {
+              daySelect.value = availableDays[availableDays.length - 1];
             }
-
-            // Always add "Add More / Custom Date..." option at bottom
-            const customOpt = document.createElement('option');
-            customOpt.value = 'custom';
-            customOpt.textContent = '📅 ➕ Add More / Custom Date...';
-            customOpt.style.fontWeight = '700';
-            customOpt.style.color = '#2563eb';
-            sel.appendChild(customOpt);
           }
-        });
+
+          const customOpt = document.createElement('option');
+          customOpt.value = 'custom';
+          customOpt.textContent = '📅 ➕ Add More / Custom Date...';
+          customOpt.style.fontWeight = '700';
+          customOpt.style.color = '#2563eb';
+          daySelect.appendChild(customOpt);
+        }
 
         // Toggle form inputs
         const kwhInput = document.getElementById('inputKwh');
@@ -7930,41 +7914,30 @@
           saveBtn.textContent = '💾 Save Reading';
         }
 
-        if (customDateInput && (!daySelect || daySelect.value !== 'custom')) {
-          customDateInput.style.display = 'none';
-        }
-
         this.updateDateFromDaySelect();
       },
 
       updateDateFromDaySelect() {
         const daySelect = document.getElementById('inputDaySelect');
-        const daySelectSub = document.getElementById('subMeterDaySelect');
         const dateInput = document.getElementById('inputDate');
-        if (!daySelect || !dateInput) return;
+        if (!dateInput) return;
 
-        if (daySelect.value === 'custom') {
-          dateInput.style.display = 'block';
-        } else {
-          dateInput.style.display = 'none';
+        dateInput.style.display = 'block';
+        if (daySelect && daySelect.value !== 'custom' && daySelect.value) {
           const now = new Date();
           const year = now.getFullYear();
           const month = now.getMonth() + 1;
           const selectedVal = daySelect.value;
-
-          if (!selectedVal) {
-            dateInput.value = '';
-            return;
-          }
-
           const day = parseInt(selectedVal);
-          const formattedMonth = month < 10 ? `0${month}` : `${month}`;
-          const formattedDay = day < 10 ? `0${day}` : `${day}`;
-          dateInput.value = `${year}-${formattedMonth}-${formattedDay}`;
-        }
-
-        if (daySelectSub && daySelectSub.value !== daySelect.value) {
-          daySelectSub.value = daySelect.value;
+          if (Number.isInteger(day)) {
+            const formattedMonth = month < 10 ? `0${month}` : `${month}`;
+            const formattedDay = day < 10 ? `0${day}` : `${day}`;
+            dateInput.value = `${year}-${formattedMonth}-${formattedDay}`;
+          } else if (!dateInput.value) {
+            dateInput.value = getDeviceLocalDateString();
+          }
+        } else if (!dateInput.value) {
+          dateInput.value = getDeviceLocalDateString();
         }
 
         this.handleLiveFormCalculation();
@@ -7995,13 +7968,10 @@
         const dateInput = document.getElementById('inputDate');
         if (daySelect && dateInput) {
           if (daySelect.value === 'custom') {
-            dateInput.style.display = 'block';
             if (!dateInput.value) {
               dateInput.value = getDeviceLocalDateString();
             }
             dateInput.focus();
-          } else {
-            dateInput.style.display = 'none';
           }
         }
         this.updateDateFromDaySelect();
@@ -8010,15 +7980,8 @@
       handleCustomDateChange() {
         const dateInput = document.getElementById('inputDate');
         if (!dateInput || !dateInput.value) return;
-        this.updateDateFromDaySelect();
-      },
-
-      handleSubMeterDaySelectChange() {
-        const daySelectSub = document.getElementById('subMeterDaySelect');
         const daySelect = document.getElementById('inputDaySelect');
-        if (daySelectSub && daySelect) {
-          daySelect.value = daySelectSub.value;
-        }
+        if (daySelect) daySelect.value = 'custom';
         this.updateDateFromDaySelect();
       },
 
@@ -8083,13 +8046,18 @@
           return;
         }
 
-        const dateVal = document.getElementById('inputDate').value || getDeviceLocalDateString();
+        const dateVal = document.getElementById('inputDate').value;
         const inputEl = document.getElementById(`inputKwh_sub_${subId}`);
         if (!inputEl) return;
         const kwhVal = inputEl.value;
 
         const sub = (activePlant.subMeters || []).find(s => s.id === subId);
         const subName = sub ? sub.name : 'Sub-Meter';
+
+        if (!dateVal) {
+          alert('Please select a reading date.');
+          return;
+        }
 
         if (!kwhVal) {
           alert(`Please enter kWh reading for "${subName}".`);
@@ -8313,9 +8281,11 @@
         const isViewer = (currentUser && currentUser.role === 'viewer');
         const dailySec = document.getElementById('dailyEntrySection');
         const subSec = document.getElementById('subMetersEntrySection');
+        const readingDateSection = document.getElementById('readingDateSection');
         const viewerExecCard = document.getElementById('viewerExecutiveCard');
 
         if (isViewer) {
+          if (readingDateSection) readingDateSection.style.display = 'none';
           if (dailySec) dailySec.style.display = 'none';
           if (subSec) subSec.style.display = 'none';
           if (viewerExecCard) {
@@ -8323,6 +8293,7 @@
             try { this.updateViewerExecutiveCard(activePlant); } catch (e) {}
           }
         } else {
+          if (readingDateSection) readingDateSection.style.display = 'block';
           if (viewerExecCard) viewerExecCard.style.display = 'none';
           if (isSubMeters) {
             if (dailySec) dailySec.style.display = 'none';
@@ -8551,27 +8522,109 @@
         this.refreshDashboardMetrics(activePlant ? activePlant.id : null);
       },
 
+      cycleDashboardAverageDays() {
+        const nextDays = { 7: 15, 15: 30, 30: 7 };
+        this.setDashboardAverageDays(nextDays[this.dashboardAverageDays] || 7);
+      },
+
+      getDashboardAverageMeterOptions(plant) {
+        const options = [{ value: 'main', label: '⚡ Main Meter', buttonLabel: '⚡ Main' }];
+        if (plant && plant.hasSolar) {
+          options.push({ value: 'solar', label: '☀️ Solar Meter', buttonLabel: '☀️ Solar' });
+        }
+        if (plant && plant.subMeters && plant.subMeters.length > 0) {
+          options.push({ value: 'submeters', label: '🔌 All Sub-Meters', buttonLabel: '🔌 All' });
+          plant.subMeters.forEach(sub => {
+            options.push({ value: sub.id, label: `🔌 ${sub.name}`, buttonLabel: `🔌 ${sub.name}` });
+          });
+        }
+        return options;
+      },
+
+      renderDashboardAverageMeterOptions(plant) {
+        const button = document.getElementById('dashboardAverageMeterButton');
+        const menu = document.getElementById('dashboardAverageMeterMenu');
+        if (!button || !menu) return;
+
+        const options = this.getDashboardAverageMeterOptions(plant);
+        const selected = options.find(option => option.value === this.dashboardAverageMeterType) || options[0];
+        button.textContent = selected.buttonLabel;
+        button.setAttribute('aria-label', `Average meter: ${selected.label.replace(/^[^ ]+ /, '')}. Tap to choose a meter.`);
+        button.setAttribute('aria-expanded', String(this.dashboardAverageMeterMenuOpen));
+        menu.hidden = !this.dashboardAverageMeterMenuOpen;
+        menu.innerHTML = '';
+
+        options.forEach(option => {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'metric-meter-option';
+          item.dataset.meterType = option.value;
+          item.textContent = option.label;
+          item.setAttribute('aria-pressed', String(option.value === this.dashboardAverageMeterType));
+          item.addEventListener('click', () => this.setDashboardAverageMeterType(option.value));
+          menu.appendChild(item);
+        });
+      },
+
+      toggleDashboardAverageMeterMenu() {
+        this.dashboardAverageMeterMenuOpen = !this.dashboardAverageMeterMenuOpen;
+        this.renderDashboardAverageMeterOptions(ContractorManager.getActivePlant());
+      },
+
+      setDashboardAverageMeterType(value) {
+        const activePlant = ContractorManager.getActivePlant();
+        if (!this.getDashboardAverageMeterOptions(activePlant).some(option => option.value === value)) return;
+        this.dashboardAverageMeterType = value;
+        this.dashboardAverageMeterMenuOpen = false;
+        this.refreshDashboardMetrics(activePlant ? activePlant.id : null);
+      },
+
       refreshDashboardMetrics(plantId) {
         const metricUnits = document.getElementById('metricUnits');
         const metricPf = document.getElementById('metricPf');
         const metricMd = document.getElementById('metricMd');
         const metricAverageUnits = document.getElementById('metricAverageUnits');
         const metricAverageCoverage = document.getElementById('metricAverageCoverage');
-        const averageDaysSelect = document.getElementById('dashboardAverageDays');
+        const averageDaysButton = document.getElementById('dashboardAverageDays');
         const windowDays = [7, 15, 30].includes(this.dashboardAverageDays) ? this.dashboardAverageDays : 7;
         const isSolar = (this.currentMeterType === 'solar');
         const isSubMeters = (this.currentMeterType === 'submeters' || (typeof this.currentMeterType === 'string' && this.currentMeterType.startsWith('sub_')));
         const activePlant = ContractorManager.getActivePlant();
+        const averageMeterOptions = this.getDashboardAverageMeterOptions(activePlant);
+        const averageMeterContext = `${activePlant ? activePlant.id : ''}:${this.currentMeterType}`;
+        if (this.dashboardAverageMeterContext !== averageMeterContext ||
+            !averageMeterOptions.some(option => option.value === this.dashboardAverageMeterType)) {
+          this.dashboardAverageMeterType = averageMeterOptions.some(option => option.value === this.currentMeterType)
+            ? this.currentMeterType
+            : 'main';
+          this.dashboardAverageMeterContext = averageMeterContext;
+        }
+        const averageMeterType = this.dashboardAverageMeterType || 'main';
+        const isAverageSolar = averageMeterType === 'solar';
+        const isAverageAllSubMeters = averageMeterType === 'submeters';
+        const selectedAverageSubMeter = activePlant && activePlant.subMeters
+          ? activePlant.subMeters.find(sub => sub.id === averageMeterType)
+          : null;
+        const isAverageSubMeter = isAverageAllSubMeters || !!selectedAverageSubMeter;
 
         const lblUnits = document.getElementById('lblMetricUnitsTitle');
         const lblAverage = document.getElementById('lblMetricAverageTitle');
         const cardPf = document.getElementById('cardMetricPf');
         const cardMd = document.getElementById('cardMetricMd');
         const cardUnits = document.getElementById('cardMetricUnits');
-        const averageMeterLabel = isSolar ? 'Solar Generation' : (isSubMeters ? 'Sub-Meter Units' : 'Main Meter Units');
+        const averageMeterLabel = isAverageSolar
+          ? 'Solar Generation'
+          : (isAverageSubMeter
+            ? `Sub-Meter Units${selectedAverageSubMeter ? ` · ${selectedAverageSubMeter.name}` : ''}`
+            : 'Main Meter Units');
 
         if (lblAverage) lblAverage.textContent = `Average Daily ${averageMeterLabel}`;
-        if (averageDaysSelect) averageDaysSelect.value = String(windowDays);
+        if (averageDaysButton) {
+          const nextDays = { 7: 15, 15: 30, 30: 7 };
+          averageDaysButton.textContent = `${windowDays} days`;
+          averageDaysButton.setAttribute('aria-label', `Average period: ${windowDays} days. Tap to switch to ${nextDays[windowDays]} days.`);
+        }
+        this.renderDashboardAverageMeterOptions(activePlant);
         const renderAverage = summary => {
           if (!summary || !summary.coveredDays || summary.averageKwhPerDay === null) {
             if (metricAverageUnits) metricAverageUnits.textContent = '—';
@@ -8581,7 +8634,7 @@
           if (metricAverageUnits) {
             metricAverageUnits.textContent = `${summary.averageKwhPerDay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kWh/day`;
           }
-          const coverageUnit = isSubMeters ? 'meter-days' : 'recorded days';
+          const coverageUnit = isAverageAllSubMeters ? 'meter-days' : 'recorded days';
           if (metricAverageCoverage) metricAverageCoverage.textContent = `Based on ${summary.coveredDays} ${coverageUnit} in the last ${windowDays} days`;
         };
 
@@ -8620,14 +8673,11 @@
 
         const plant = ContractorManager.getActivePlant();
 
-        if (isSubMeters) {
-          let totalSubKwh = 0;
+        if (isAverageAllSubMeters) {
           let averageKwhPerDay = 0;
           let coveredMeterDays = 0;
           if (plant && plant.subMeters) {
             plant.subMeters.forEach(s => {
-              const r = HistoryManager.getReadingsForPlant(plantId, s.id);
-              if (r.length > 0) totalSubKwh += (r[0].deltaKwh || 0);
               const average = HistoryManager.getAverageDailyKwh(plantId, s.id, windowDays);
               if (average.coveredDays > 0 && average.averageKwhPerDay !== null) {
                 averageKwhPerDay += average.averageKwhPerDay;
@@ -8636,11 +8686,21 @@
             });
           }
           renderAverage(coveredMeterDays ? { averageKwhPerDay, coveredDays: coveredMeterDays } : null);
+        } else {
+          renderAverage(HistoryManager.getAverageDailyKwh(plantId, averageMeterType, windowDays));
+        }
+
+        if (isSubMeters) {
+          let totalSubKwh = 0;
+          if (plant && plant.subMeters) {
+            plant.subMeters.forEach(sub => {
+              const readings = HistoryManager.getReadingsForPlant(plantId, sub.id);
+              if (readings.length > 0) totalSubKwh += (readings[0].deltaKwh || 0);
+            });
+          }
           if (metricUnits) metricUnits.textContent = formatEnergyValue(totalSubKwh, true);
           return;
         }
-
-        renderAverage(HistoryManager.getAverageDailyKwh(plantId, this.currentMeterType, windowDays));
         const readings = HistoryManager.getReadingsForPlant(plantId, this.currentMeterType);
 
         if (readings.length === 0) {
