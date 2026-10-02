@@ -365,8 +365,8 @@
             dateInput.value = appWindow.__dashboardExpectedDate;
             dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
             appWindow.eval('App.initDayPicker = window.__dashboardOriginalInitDayPicker; App.initDayPicker();');
-            assert(daySelect.value === 'custom' && dateInput.value === appWindow.__dashboardExpectedDate, 'custom date selection and value must persist through date-picker refresh');
-            assert(appWindow.getComputedStyle(dateInput).display !== 'none', 'custom picker must remain visible after refresh');
+            assert(daySelect.value === String(new Date().getDate()) && dateInput.value === appWindow.__dashboardExpectedDate, 'refresh must return to the available preset for the selected date');
+            assert(appWindow.getComputedStyle(dateInput).display === 'none', 'refresh must hide the native picker after clearing the custom selection');
             const pressEnter = input => {
               const event = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
               input.dispatchEvent(event);
@@ -457,6 +457,7 @@
             return 'Main and Solar Enter submissions save once; invalid and duplicate entries remain blocked';
           });
           check('dashboard metric order and compact PF/MD cards work on mobile and desktop', () => {
+            appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-a');`);
             const grid = appDocument.querySelector('.metrics-grid');
             assert(appWindow.matchMedia('(max-width: 640px)').matches, 'test frame must use the mobile breakpoint');
             const units = appWindow.getComputedStyle(appDocument.getElementById('cardMetricUnits'));
