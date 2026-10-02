@@ -69,6 +69,7 @@
         try {
           const appWindow = frame.contentWindow;
           const appDocument = frame.contentDocument;
+          appDocument.querySelectorAll('.modal-backdrop.active').forEach(modal => modal.classList.remove('active'));
           const plant = {
             id: 'factory-a',
             contractDemand: 20,
@@ -103,6 +104,8 @@
           `);
 
           const periodButton = appDocument.getElementById('dashboardAverageDays');
+          const periodLabel = appDocument.getElementById('dashboardAverageDaysLabel');
+          const averageCard = appDocument.getElementById('cardMetricAverageUnits');
           const averageValue = appDocument.getElementById('metricAverageUnits');
           function chooseDays(days) {
             let attempts = 0;
@@ -118,20 +121,31 @@
             assert(option, `average meter option ${meterType} must be available`);
             option.click();
           }
+          function tapAverageCardAt(xRatio, yRatio) {
+            const rect = averageCard.getBoundingClientRect();
+            const target = appDocument.elementFromPoint(
+              rect.left + rect.width * xRatio,
+              rect.top + rect.height * yRatio
+            );
+            assert(target === periodButton, 'the full average card surface must activate the period control');
+            target.click();
+          }
           function closeTo(actual, expected) {
             return Number.isFinite(actual) && Math.abs(actual - expected) < 0.01;
           }
 
-          check('period button cycles 7 to 15 to 30 days and wraps to 7', () => {
-            assert(periodButton.textContent === '7 days', '7 days must be the initial period');
+          check('the full average card cycles 7 to 15 to 30 days and wraps to 7', () => {
+            assert(periodLabel.textContent === '7 days', '7 days must be the initial period');
             assert(periodButton.getAttribute('aria-label').includes('15 days'), 'accessible label must describe the next period');
+            assert(periodButton.tagName === 'BUTTON' && periodButton.type === 'button', 'period control must have button semantics');
+            assert(periodButton.tabIndex >= 0, 'period control must be reachable by keyboard');
+            tapAverageCardAt(0.2, 0.2);
+            assert(periodLabel.textContent === '15 days', 'tap near the card header must select 15 days');
+            tapAverageCardAt(0.8, 0.8);
+            assert(periodLabel.textContent === '30 days', 'tap near the card footer must select 30 days');
             periodButton.click();
-            assert(periodButton.textContent === '15 days', 'first tap must select 15 days');
-            periodButton.click();
-            assert(periodButton.textContent === '30 days', 'second tap must select 30 days');
-            periodButton.click();
-            assert(periodButton.textContent === '7 days', 'third tap must wrap to 7 days');
-            return 'Touch-friendly button cycles and exposes its next period';
+            assert(periodLabel.textContent === '7 days', 'button activation must wrap to 7 days');
+            return 'Whole-card taps cycle periods and expose an accessible button control';
           });
           check('7-day selection prorates overlapping intervals and excludes uncovered days', () => {
             assert(appWindow.App.dashboardAverageDays === 7, '7 days must be the default');
@@ -158,27 +172,44 @@
             assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Solar Generation', 'solar label must say generation');
             return 'Factory isolation and Solar Generation label verified';
           });
-          check('average meter menu lists actual sub-meters and is independent of dashboard context', () => {
+          check('meter chooser is hidden outside sub-meter context and card taps do not open it', () => {
             appWindow.eval(`App.currentMeterType = 'main'; App.refreshDashboardMetrics('factory-a');`);
-            const mainUnits = appDocument.getElementById('metricUnits').textContent;
-            chooseAverageMeter('solar');
+            const selector = appDocument.getElementById('dashboardAverageMeterSelector');
+            assert(appWindow.getComputedStyle(selector).display === 'none', 'main context must hide the sub-meter chooser');
+            tapAverageCardAt(0.75, 0.45);
+            assert(appDocument.getElementById('dashboardAverageMeterMenu').hidden, 'a period-card tap must not open the sub-meter menu');
+            chooseDays(7);
+            appWindow.eval(`App.currentMeterType = 'solar'; App.refreshDashboardMetrics('factory-a');`);
+            assert(appWindow.getComputedStyle(selector).display === 'none', 'solar context must hide the sub-meter chooser');
             assert(closeTo(parseFloat(averageValue.textContent), 3.5), `expected solar average of 3.50, received ${averageValue.textContent}`);
-            assert(appWindow.App.currentMeterType === 'main', 'average selection must not change the dashboard meter context');
-            assert(appDocument.getElementById('metricUnits').textContent === mainUnits, 'main-meter units must remain in the current dashboard context');
+            return 'Main and Solar contexts have no meter chooser; card taps only cycle periods';
+          });
+          check('sub-meter chooser lists only configured meters and preserves dashboard scope', () => {
+            appWindow.eval(`App.currentMeterType = 'submeters'; App.dashboardAverageMeterType = 'submeters'; App.dashboardAverageMeterContext = null; App.refreshDashboardMetrics('factory-a');`);
+            const selector = appDocument.getElementById('dashboardAverageMeterSelector');
+            assert(appWindow.getComputedStyle(selector).display !== 'none', 'sub-meter context must show the configured sub-meter chooser');
+            const meterButton = appDocument.getElementById('dashboardAverageMeterButton');
+            assert(meterButton.tagName === 'BUTTON' && meterButton.tabIndex >= 0, 'sub-meter chooser must remain a keyboard-reachable button');
+            const subMeterUnits = appDocument.getElementById('metricUnits').textContent;
             chooseAverageMeter('sub_one');
             assert(closeTo(parseFloat(averageValue.textContent), 4), `expected Mixer average of 4.00, received ${averageValue.textContent}`);
+            assert(appWindow.App.currentMeterType === 'submeters', 'chooser selection must not change dashboard scope');
+            assert(appDocument.getElementById('metricUnits').textContent === subMeterUnits, 'sub-meter units must remain in the current dashboard context');
             assert(appDocument.getElementById('lblMetricAverageTitle').textContent.includes('Sub-Meter Units · Mixer'), 'selected sub-meter name must appear with the sub-meter label');
             chooseAverageMeter('sub_two');
             assert(closeTo(parseFloat(averageValue.textContent), 6), `expected Pump average of 6.00, received ${averageValue.textContent}`);
             appDocument.getElementById('dashboardAverageMeterButton').click();
-            const menuOptions = Array.from(appDocument.querySelectorAll('#dashboardAverageMeterMenu [data-meter-type]')).map(option => option.textContent);
-            assert(menuOptions.some(option => option.includes('Mixer')) && menuOptions.some(option => option.includes('Pump')), 'all configured sub-meter names must be listed');
-            assert(menuOptions.some(option => option.includes('Main Meter')) && menuOptions.some(option => option.includes('Solar Meter')), 'main and enabled solar meters must be listed');
-            appDocument.getElementById('dashboardAverageMeterMenu').querySelector('[data-meter-type="submeters"]').click();
-            return 'Meter choices recalculate independently and list configured names';
+            const menuOptions = Array.from(appDocument.querySelectorAll('#dashboardAverageMeterMenu [data-meter-type]')).map(option => option.dataset.meterType);
+            assert(menuOptions.length === 2 && menuOptions.includes('sub_one') && menuOptions.includes('sub_two'), 'menu must list only configured sub-meter IDs');
+            assert(!menuOptions.includes('main') && !menuOptions.includes('solar') && !menuOptions.includes('submeters'), 'menu must not include Main, Solar, or aggregate placeholders');
+            const firstOption = appDocument.querySelector('#dashboardAverageMeterMenu [data-meter-type]');
+            firstOption.focus();
+            assert(appDocument.activeElement === firstOption, 'sub-meter menu options must remain keyboard-focusable');
+            meterButton.click();
+            return 'Only configured sub-meters are selectable without changing dashboard scope';
           });
           check('sub-meter average sums each meter’s observed daily rate', () => {
-            appWindow.eval(`App.currentMeterType = 'submeters'; App.refreshDashboardMetrics('factory-a');`);
+            appWindow.eval(`App.currentMeterType = 'submeters'; App.dashboardAverageMeterType = 'submeters'; App.dashboardAverageMeterContext = null; App.refreshDashboardMetrics('factory-a');`);
             assert(closeTo(parseFloat(averageValue.textContent), 10), `expected combined sub-meter average of 10, received ${averageValue.textContent}`);
             assert(appDocument.getElementById('lblMetricAverageTitle').textContent === 'Average Daily Sub-Meter Units', 'sub-meter label must be correct');
             assert(appDocument.getElementById('metricAverageCoverage').textContent.includes('meter-days'), 'combined sub-meter coverage must be expressed in meter-days');
@@ -206,15 +237,19 @@
             appWindow.__dashboardExpectedDate = dateDaysAgo(0);
             appWindow.__dashboardValidatedDates = [];
             appWindow.__dashboardSubmittedSubReadings = [];
-            appWindow.alert = () => {};
+            appWindow.__dashboardAlerts = [];
+            appWindow.alert = message => appWindow.__dashboardAlerts.push(message);
             appWindow.eval(`
+              ContractorManager.getActivePlant = () => window.__dashboardTestPlant;
               AuthManager.getCurrentUser = () => ({ role: 'worker', name: 'Regression Worker' });
+              AuthManager.verifyAccess = () => ({ authorized: true });
               HistoryManager.canWriteToPlant = () => true;
               window.__dashboardStoredReadings = window.__dashboardTestReadings.slice();
               HistoryManager.getAllReadings = () => window.__dashboardStoredReadings;
               App.checkUserAccess = () => true;
               App.renderMeterTypeSelector = () => {};
               App.updatePowerCutStatusView = () => {};
+              window.__dashboardOriginalInitDayPicker = App.initDayPicker;
               App.initDayPicker = () => {};
               App.updatePreviousHints = () => {};
               HistoryManager.recalculatePlantReadings = () => {};
@@ -237,24 +272,54 @@
               App.renderSubMetersEntryList(window.__dashboardTestPlant);
             `);
             assert(appWindow.getComputedStyle(dateSection).display !== 'none', 'shared reading date section must be visible for writers');
-            assert(dateInput.type === 'date' && appWindow.getComputedStyle(dateInput).display !== 'none', 'shared native date input must be visible and usable');
+            assert(dateInput.type === 'date' && appWindow.getComputedStyle(dateInput).display === 'none', 'native date picker must be hidden while a quick preset is selected');
             assert(!appDocument.getElementById('subMeterDaySelect') && !appDocument.getElementById('subMeterCustomDate'), 'sub-meter entry must not have a duplicate date field');
+            const daySelect = appDocument.getElementById('inputDaySelect');
+            const todayDay = new Date().getDate();
+            daySelect.innerHTML = `<option value="${todayDay}">Today</option><option value="custom">Custom Date</option>`;
+            daySelect.value = String(todayDay);
+            appWindow.App.updateDateFromDaySelect();
+            assert(appWindow.getComputedStyle(dateInput).display === 'none', 'quick preset selection must keep the native picker hidden');
+            daySelect.value = 'custom';
+            appWindow.App.handleDaySelectChange();
+            assert(appWindow.getComputedStyle(dateInput).display !== 'none', 'selecting Custom Date must reveal the native picker');
             dateInput.value = appWindow.__dashboardExpectedDate;
             dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
-            appDocument.getElementById('inputKwh_sub_sub_one').value = '50';
-            appWindow.App.submitSingleSubMeterReading('sub_one');
+            appWindow.eval('App.initDayPicker = window.__dashboardOriginalInitDayPicker; App.initDayPicker();');
+            assert(daySelect.value === 'custom' && dateInput.value === appWindow.__dashboardExpectedDate, 'custom date selection and value must persist through date-picker refresh');
+            assert(appWindow.getComputedStyle(dateInput).display !== 'none', 'custom picker must remain visible after refresh');
+            const pressEnter = input => {
+              const event = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+              input.dispatchEvent(event);
+              return event;
+            };
+            const subOneInput = appDocument.getElementById('inputKwh_sub_sub_one');
+            const beforeInvalidSub = appWindow.__dashboardStoredReadings.length;
+            subOneInput.value = '';
+            pressEnter(subOneInput);
+            assert(appWindow.__dashboardStoredReadings.length === beforeInvalidSub, 'empty sub-meter Enter must not save');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('Please enter kWh reading')), 'empty sub-meter Enter must show the existing validation error');
+            subOneInput.value = '50';
+            assert(pressEnter(subOneInput).defaultPrevented, 'sub-meter Enter must prevent native form/navigation behavior');
             appWindow.__dashboardSubmittedSubReadings.push(
               appWindow.__dashboardStoredReadings.find(reading => reading.meterType === 'sub_one' && reading.date === appWindow.__dashboardExpectedDate)
             );
+            const beforeDuplicate = appWindow.__dashboardStoredReadings.length;
+            appDocument.getElementById('inputKwh_sub_sub_one').value = '55';
+            pressEnter(appDocument.getElementById('inputKwh_sub_sub_one'));
+            assert(appWindow.__dashboardStoredReadings.length === beforeDuplicate, 'duplicate sub-meter Enter must not save a second reading');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('Duplicate entries are not allowed')), 'duplicate sub-meter Enter must show the existing duplicate error');
             dateInput.value = dateDaysAgo(6);
             dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
-            appDocument.getElementById('inputKwh_sub_sub_two').value = '75';
-            appWindow.App.submitSingleSubMeterReading('sub_two');
+            const subTwoInput = appDocument.getElementById('inputKwh_sub_sub_two');
+            subTwoInput.value = '75';
+            pressEnter(subTwoInput);
             assert(appWindow.__dashboardSubmittedSubReadings.length === 1, 'date validation must reject a sub-meter reading outside the allowed date');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('previous 4 days')), 'invalid sub-meter date must show the existing date validation error');
             dateInput.value = appWindow.__dashboardExpectedDate;
             dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
             appDocument.getElementById('inputKwh_sub_sub_two').value = '75';
-            appWindow.App.submitSingleSubMeterReading('sub_two');
+            pressEnter(appDocument.getElementById('inputKwh_sub_sub_two'));
             appWindow.__dashboardSubmittedSubReadings.push(
               appWindow.__dashboardStoredReadings.find(reading => reading.meterType === 'sub_two' && reading.date === appWindow.__dashboardExpectedDate)
             );
@@ -263,7 +328,54 @@
             assert(saved.every(reading => reading.date === appWindow.__dashboardExpectedDate), 'each sub-meter save must use the selected shared date');
             assert(appWindow.__dashboardValidatedDates.includes(dateDaysAgo(6)), 'the selected invalid date must reach validation');
             assert(appWindow.__dashboardValidatedDates.filter(date => date === appWindow.__dashboardExpectedDate).length >= 2, 'the selected valid date must reach validation for both meters');
-            return `Mixer and Pump saved for ${appWindow.__dashboardExpectedDate}; invalid date was rejected`;
+            return `Enter saved Mixer and Pump for ${appWindow.__dashboardExpectedDate}; invalid and duplicate entries were rejected`;
+          });
+          check('Enter saves valid Main and Solar readings and preserves their validation', () => {
+            const dateInput = appDocument.getElementById('inputDate');
+            const mainInput = appDocument.getElementById('inputKwh');
+            const countFor = meterType => appWindow.__dashboardStoredReadings.filter(reading =>
+              reading.plantId === 'factory-a' && reading.meterType === meterType && reading.date === appWindow.__dashboardExpectedDate
+            ).length;
+            appWindow.eval(`
+              App.refreshSelectedFactoryView = () => {};
+              App.showSuccessModal = () => {};
+              App.handleLiveFormCalculation = () => {};
+            `);
+            dateInput.value = appWindow.__dashboardExpectedDate;
+            dateInput.dispatchEvent(new appWindow.Event('change', { bubbles: true }));
+            appWindow.eval(`App.currentMeterType = 'main';`);
+            const beforeInvalid = countFor('main');
+            mainInput.value = '';
+            const invalidEvent = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+            mainInput.dispatchEvent(invalidEvent);
+            assert(invalidEvent.defaultPrevented && countFor('main') === beforeInvalid, 'invalid Main Enter must be prevented and must not save');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('Please enter active kWh reading')), 'invalid Main Enter must show the existing validation error');
+            mainInput.value = '100';
+            appDocument.getElementById('inputKvah').value = '110';
+            appDocument.getElementById('inputKvarh').value = '0';
+            appDocument.getElementById('inputMd').value = '10';
+            const mainEvent = new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+            mainInput.dispatchEvent(mainEvent);
+            assert(mainEvent.defaultPrevented && countFor('main') === beforeInvalid + 1, 'valid Main Enter must save once');
+            mainInput.value = '120';
+            mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            assert(countFor('main') === beforeInvalid + 1, 'duplicate Main Enter must not save again');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Main Enter must show the existing duplicate error');
+
+            appWindow.eval(`App.currentMeterType = 'solar';`);
+            mainInput.value = '';
+            const invalidSolarBefore = countFor('solar');
+            mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            assert(countFor('solar') === invalidSolarBefore, 'invalid Solar Enter must not save');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('Please enter Solar kWh reading')), 'invalid Solar Enter must show the existing validation error');
+            mainInput.value = '100';
+            mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            assert(countFor('solar') === invalidSolarBefore + 1, 'valid Solar Enter must save once');
+            mainInput.value = '110';
+            mainInput.dispatchEvent(new appWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+            assert(countFor('solar') === invalidSolarBefore + 1, 'duplicate Solar Enter must not save again');
+            assert(appWindow.__dashboardAlerts.some(message => message.includes('already saved')), 'duplicate Solar Enter must show the existing duplicate error');
+            return 'Main and Solar Enter submissions save once; invalid and duplicate entries remain blocked';
           });
           check('mobile metric cards pair readings above Power Factor and Maximum Demand', () => {
             const grid = appDocument.querySelector('.metrics-grid');
