@@ -149,12 +149,14 @@
             const resetBox = appDocument.getElementById('settingMeterResetFlag').closest('.admin-reset-box');
             const resetCheckbox = appDocument.getElementById('settingMeterResetFlag');
             const saveButton = appDocument.getElementById('btnSavePlantSettings');
+            const toggleButton = appDocument.getElementById('btnToggleEditPlantSettings');
             const saveActions = saveButton.closest('.form-actions');
             const subMetersPanel = appDocument.getElementById('settingSubMetersList').parentElement;
             const followsSubMeters = node => !!(node.compareDocumentPosition(subMetersPanel) & appWindow.Node.DOCUMENT_POSITION_FOLLOWING);
             assert(resetCheckbox.type === 'checkbox' && saveButton.type === 'submit', 'reset and factory-save controls must keep their existing form semantics');
             assert(followsSubMeters(resetBox) && followsSubMeters(saveActions), 'the reset option and Save Factory Settings action must both precede the Sub-Meters panel');
             assert(resetCheckbox.disabled && saveButton.disabled, 'settings must remain locked by default');
+            assert(toggleButton.textContent.includes('Edit Factory Settings'), 'locked settings must offer the edit action');
 
             const previousResetChecked = resetCheckbox.checked;
             appWindow.eval(`
@@ -176,8 +178,14 @@
               App.refreshSelectedFactoryView = () => {};
             `);
             try {
-              appWindow.App.applyPlantSettingsLockState(true);
+              toggleButton.click();
+              assert(appWindow.App.isEditingPlantSettings && toggleButton.textContent.trim() === 'Cancel', 'editing settings must change the action label to Cancel');
               assert(!resetCheckbox.disabled && !saveButton.disabled, 'unlocking settings must enable the reset checkbox and save action');
+              toggleButton.click();
+              assert(!appWindow.App.isEditingPlantSettings && resetCheckbox.disabled && saveButton.disabled, 'Cancel must restore the locked state');
+              assert(toggleButton.textContent.includes('Edit Factory Settings'), 'canceling must restore the edit action label');
+              toggleButton.click();
+              assert(appWindow.App.isEditingPlantSettings && toggleButton.textContent.trim() === 'Cancel', 'settings must be editable again after canceling');
               resetCheckbox.checked = true;
               appDocument.getElementById('settingPlantName').value = 'Regression Factory';
               let prevented = false;
@@ -187,6 +195,7 @@
               assert(update && update.id === 'factory-settings-regression', 'saving must update the active factory');
               assert(update.values.isMeterReset === true, 'saving must persist the selected new-meter reset option');
               assert(resetCheckbox.disabled && saveButton.disabled, 'saving must return settings to the locked state');
+              assert(toggleButton.textContent.includes('Edit Factory Settings'), 'saving must restore the edit action label');
               return 'Controls remain locked until edit, precede Sub-Meters, and the reset choice is saved';
             } finally {
               resetCheckbox.checked = previousResetChecked;
